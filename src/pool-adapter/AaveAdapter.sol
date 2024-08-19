@@ -32,13 +32,29 @@ interface IAavePoolLike {
 
     function withdraw(address asset, uint256 amount, address to) external returns (uint256);
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
+
+    function getUserAccountData(address user) external view returns (
+        uint256 totalCollateralBase,
+        uint256 totalDebtBase,
+        uint256 availableBorrowsBase,
+        uint256 currentLiquidationThreshold,
+        uint256 ltv,
+        uint256 healthFactor
+    );
 }
 
 contract AaveAdapter is IPoolAdapter {
     using MultiToken for MultiToken.Asset;
     using MultiToken for address;
 
+    uint256 public constant DEFAULT_MIN_HEALTH_FACTOR = 1.2e18;
+
     PWNHub public hub;
+
+    mapping(address => uint256) public minHealthFactor;
+
+    error InvalidMinHealthFactor(uint256 minHealthFactor);
+    error HealthFactorBelowMin(uint256 healthFactor, uint256 minHealthFactor);
 
     constructor(address _hub) {
         hub = PWNHub(_hub);
@@ -61,6 +77,14 @@ contract AaveAdapter is IPoolAdapter {
 
         // Withdraw from the pool to the owner
         IAavePoolLike(pool).withdraw(asset, amount, owner);
+
+        // Check health factor after withdrawal
+        (,,,,, uint256 healthFactor) = IAavePoolLike(pool).getUserAccountData(owner);
+        uint256 _minHealthFactor = minHealthFactor[owner];
+        _minHealthFactor = _minHealthFactor == 0 ? DEFAULT_MIN_HEALTH_FACTOR : _minHealthFactor;
+        if (healthFactor < _minHealthFactor) {
+            revert HealthFactorBelowMin(healthFactor, _minHealthFactor);
+        }
     }
 
     /**
@@ -70,6 +94,14 @@ contract AaveAdapter is IPoolAdapter {
         // Supply to the pool on behalf of the owner
         asset.ERC20(amount).approveAsset(pool);
         IAavePoolLike(pool).supply(asset, amount, owner, 0);
+    }
+
+    function setMinHealthFactor(uint256 _minHealthFactor) external {
+        if (_minHealthFactor < 1e18) {
+            revert InvalidMinHealthFactor(_minHealthFactor);
+        }
+
+        minHealthFactor[msg.sender] = _minHealthFactor;
     }
 
 }
