@@ -33,6 +33,8 @@ interface IAavePoolLike {
     function withdraw(address asset, uint256 amount, address to) external returns (uint256);
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
 
+    function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf) external;
+
     function getUserAccountData(address user) external view returns (
         uint256 totalCollateralBase,
         uint256 totalDebtBase,
@@ -54,7 +56,7 @@ contract AaveAdapter is IPoolAdapter {
     mapping(address => uint256) public minHealthFactor;
 
     error InvalidMinHealthFactor(uint256 minHealthFactor);
-    error HealthFactorBelowMin(uint256 healthFactor, uint256 minHealthFactor);
+    error HealthFactorBelowMin(uint256 minHealthFactor, uint256 healthFactor);
 
     constructor(address _hub) {
         hub = PWNHub(_hub);
@@ -75,16 +77,16 @@ contract AaveAdapter is IPoolAdapter {
             .ERC20(amount) // Note: Assuming aToken is minted in 1:1 ratio to underlying asset
             .transferAssetFrom(owner, address(this));
 
-        // Withdraw from the pool to the owner
-        IAavePoolLike(pool).withdraw(asset, amount, owner);
-
-        // Check health factor after withdrawal
+        // Check owner health factor
         (,,,,, uint256 healthFactor) = IAavePoolLike(pool).getUserAccountData(owner);
         uint256 _minHealthFactor = minHealthFactor[owner];
         _minHealthFactor = _minHealthFactor == 0 ? DEFAULT_MIN_HEALTH_FACTOR : _minHealthFactor;
         if (healthFactor < _minHealthFactor) {
-            revert HealthFactorBelowMin(healthFactor, _minHealthFactor);
+            revert HealthFactorBelowMin(_minHealthFactor, healthFactor);
         }
+
+        // Withdraw from the pool to the owner
+        IAavePoolLike(pool).withdraw(asset, amount, owner);
     }
 
     /**
@@ -96,6 +98,10 @@ contract AaveAdapter is IPoolAdapter {
         IAavePoolLike(pool).supply(asset, amount, owner, 0);
     }
 
+    /**
+     * @notice Set a minimum health factor that is acceptable after a successful withdrawal.
+     * @param _minHealthFactor The new minimum health factor.
+     */
     function setMinHealthFactor(uint256 _minHealthFactor) external {
         if (_minHealthFactor < 1e18) {
             revert InvalidMinHealthFactor(_minHealthFactor);
