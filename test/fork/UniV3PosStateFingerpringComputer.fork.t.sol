@@ -39,22 +39,31 @@ contract UniV3PosStateFingerprintComputerTest is UseCasesTest {
 
     address constant UNI_V3_POS = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
 
+    uint256 collId = 1;
+
+    UniV3PosStateFingerpringComputer computer;
+
     constructor() {
         deploymentsSubpath = "/lib/pwn_contracts";
     }
 
-    function test_shouldFail_whenUniV3PosStateChanges() external {
-        UniV3PosStateFingerpringComputer computer = new UniV3PosStateFingerpringComputer(UNI_V3_POS);
+    function setUp() override public {
+        super.setUp();
+
+        computer = new UniV3PosStateFingerpringComputer(UNI_V3_POS);
+        vm.prank(deployment.config.owner());
         deployment.config.registerStateFingerprintComputer(UNI_V3_POS, address(computer));
 
-        uint256 collId = 1;
+        collId = 1;
         address originalOwner = IERC721(UNI_V3_POS).ownerOf(collId);
         vm.prank(originalOwner);
         IERC721(UNI_V3_POS).transferFrom(originalOwner, borrower, collId);
 
         vm.prank(borrower);
         IERC721(UNI_V3_POS).setApprovalForAll(address(deployment.simpleLoan), true);
+    }
 
+    function test_shouldFail_whenUniV3PosStateChanges() external {
         // Define proposal
         proposal.collateralCategory = MultiToken.Category.ERC721;
         proposal.collateralAddress = UNI_V3_POS;
@@ -86,17 +95,6 @@ contract UniV3PosStateFingerprintComputerTest is UseCasesTest {
     }
 
     function test_shouldPass_whenUniV3PosStateDoesNotChange() external {
-        UniV3PosStateFingerpringComputer computer = new UniV3PosStateFingerpringComputer(UNI_V3_POS);
-        deployment.config.registerStateFingerprintComputer(UNI_V3_POS, address(computer));
-
-        uint256 collId = 1;
-        address originalOwner = IERC721(UNI_V3_POS).ownerOf(collId);
-        vm.prank(originalOwner);
-        IERC721(UNI_V3_POS).transferFrom(originalOwner, borrower, collId);
-
-        vm.prank(borrower);
-        IERC721(UNI_V3_POS).setApprovalForAll(address(deployment.simpleLoan), true);
-
         // Define proposal
         proposal.collateralCategory = MultiToken.Category.ERC721;
         proposal.collateralAddress = UNI_V3_POS;
