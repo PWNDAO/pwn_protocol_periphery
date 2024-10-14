@@ -4,6 +4,12 @@ pragma solidity 0.8.16;
 import { Test } from "forge-std/Test.sol";
 
 import {
+    PoolZeroAddress,
+    OwnerZeroAddress,
+    AssetZeroAddress,
+    AmountZero
+} from "src/pool-adapter/utils/checkInputs.sol";
+import {
     AaveAdapter,
     IAavePoolLike,
     PWNHubTags,
@@ -69,7 +75,36 @@ contract AaveAdapterTest is Test {
 
 }
 
+contract AaveAdapter_Constructor_Test is AaveAdapterTest {
+
+    function test_shouldFail_whenHubZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(AaveAdapter.HubZeroAddress.selector));
+        new AaveAdapter(address(0));
+    }
+
+}
+
 contract AaveAdapter_Withdraw_Test is AaveAdapterTest {
+
+    function test_shouldFail_whenPoolZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(PoolZeroAddress.selector));
+        adapter.withdraw(address(0), owner, asset, amount);
+    }
+
+    function test_shouldFail_whenOwnerZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(OwnerZeroAddress.selector));
+        adapter.withdraw(pool, address(0), asset, amount);
+    }
+
+    function test_shouldFail_whenAssetZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(AssetZeroAddress.selector));
+        adapter.withdraw(pool, owner, address(0), amount);
+    }
+
+    function test_shouldFail_whenAmountZero() external {
+        vm.expectRevert(abi.encodeWithSelector(AmountZero.selector));
+        adapter.withdraw(pool, owner, asset, 0);
+    }
 
     function testFuzz_shouldFail_whenCallerNotActiveLoan(address caller) external {
         vm.assume(caller != activeLoan);
@@ -80,6 +115,9 @@ contract AaveAdapter_Withdraw_Test is AaveAdapterTest {
     }
 
     function testFuzz_shouldTransferATokensToAdapter(address _owner, uint256 _amount) external {
+        vm.assume(_owner != address(0));
+        vm.assume(_amount > 0);
+
         _mockUserAccountData(pool, _owner, adapter.DEFAULT_MIN_HEALTH_FACTOR());
 
         vm.expectCall(
@@ -114,6 +152,10 @@ contract AaveAdapter_Withdraw_Test is AaveAdapterTest {
     }
 
     function testFuzz_shouldWithdrawFromPool(address _owner, address _asset, uint256 _amount) external {
+        vm.assume(_owner != address(0));
+        vm.assume(_asset != address(0));
+        vm.assume(_amount > 0);
+
         _mockReserveData(pool, _asset, aToken);
         _mockUserAccountData(pool, _owner, adapter.DEFAULT_MIN_HEALTH_FACTOR());
 
@@ -129,13 +171,38 @@ contract AaveAdapter_Withdraw_Test is AaveAdapterTest {
 
 contract AaveAdapter_Supply_Test is AaveAdapterTest {
 
+    function test_shouldFail_whenPoolZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(PoolZeroAddress.selector));
+        adapter.supply(address(0), owner, asset, amount);
+    }
+
+    function test_shouldFail_whenOwnerZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(OwnerZeroAddress.selector));
+        adapter.supply(pool, address(0), asset, amount);
+    }
+
+    function test_shouldFail_whenAssetZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(AssetZeroAddress.selector));
+        adapter.supply(pool, owner, address(0), amount);
+    }
+
+    function test_shouldFail_whenAmountZero() external {
+        vm.expectRevert(abi.encodeWithSelector(AmountZero.selector));
+        adapter.supply(pool, owner, asset, 0);
+    }
+
     function testFuzz_shouldApprovePool(uint256 _amount) external {
+        vm.assume(_amount > 0);
+
         vm.expectCall(asset, abi.encodeWithSignature("approve(address,uint256)", pool, _amount));
 
         adapter.supply(pool, owner, asset, _amount);
     }
 
     function testFuzz_shouldDepositToPool(address _owner, uint256 _amount) external {
+        vm.assume(_owner != address(0));
+        vm.assume(_amount > 0);
+
         vm.expectCall(pool, abi.encodeWithSelector(IAavePoolLike.supply.selector, asset, _amount, _owner, 0));
 
         adapter.supply(pool, _owner, asset, _amount);

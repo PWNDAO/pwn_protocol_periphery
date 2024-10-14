@@ -8,6 +8,8 @@ import { PWNHubTags } from "pwn/hub/PWNHubTags.sol";
 import { IPoolAdapter } from "pwn/interfaces/IPoolAdapter.sol";
 import { AddressMissingHubTag } from "pwn/PWNErrors.sol";
 
+import { checkInputs } from "src/pool-adapter/utils/checkInputs.sol";
+
 
 interface IAavePoolLike {
     struct ReserveData {
@@ -55,10 +57,15 @@ contract AaveAdapter is IPoolAdapter {
 
     mapping(address => uint256) public minHealthFactor;
 
+    error HubZeroAddress();
     error InvalidMinHealthFactor(uint256 minHealthFactor);
     error HealthFactorBelowMin(uint256 minHealthFactor, uint256 healthFactor);
 
     constructor(address _hub) {
+        if (_hub == address(0)) {
+            revert HubZeroAddress();
+        }
+
         hub = PWNHub(_hub);
     }
 
@@ -66,6 +73,8 @@ contract AaveAdapter is IPoolAdapter {
      * @inheritdoc IPoolAdapter
      */
     function withdraw(address pool, address owner, address asset, uint256 amount) external {
+        checkInputs(pool, owner, asset, amount);
+
         // Check caller is active loan contract
         if (!hub.hasTag(msg.sender, PWNHubTags.ACTIVE_LOAN)) {
             revert AddressMissingHubTag({ addr: msg.sender, tag: PWNHubTags.ACTIVE_LOAN });
@@ -93,6 +102,8 @@ contract AaveAdapter is IPoolAdapter {
      * @inheritdoc IPoolAdapter
      */
     function supply(address pool, address owner, address asset, uint256 amount) external {
+        checkInputs(pool, owner, asset, amount);
+
         // Supply to the pool on behalf of the owner
         asset.ERC20(amount).approveAsset(pool);
         IAavePoolLike(pool).supply(asset, amount, owner, 0);

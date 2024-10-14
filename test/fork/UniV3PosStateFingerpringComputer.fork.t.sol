@@ -35,7 +35,7 @@ interface UniV3PostLike {
         returns (uint256 amount0, uint256 amount1);
 }
 
-contract UniV3PosStateFingerprintComputerTest is UseCasesTest {
+contract UniV3PosStateFingerprintComputerForkTest is UseCasesTest {
 
     address constant UNI_V3_POS = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
 

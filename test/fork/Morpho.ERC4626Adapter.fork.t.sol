@@ -19,7 +19,7 @@ import {
 } from "pwn_contracts/test/fork/UseCases.fork.t.sol";
 
 
-contract MorphoERC4626AdapterTest is UseCasesTest {
+contract MorphoERC4626AdapterForkTest is UseCasesTest {
 
     address constant MORPHO_VAULT = 0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB; // Steakhouse USDC
     address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;

@@ -4,6 +4,12 @@ pragma solidity 0.8.16;
 import { Test } from "forge-std/Test.sol";
 
 import {
+    PoolZeroAddress,
+    OwnerZeroAddress,
+    AssetZeroAddress,
+    AmountZero
+} from "src/pool-adapter/utils/checkInputs.sol";
+import {
     ERC4626Adapter,
     IERC4626Like,
     PWNHubTags,
@@ -47,7 +53,36 @@ contract ERC4626AdapterTest is Test {
 
 }
 
+contract ERC4626Adapter_Constructor_Test is ERC4626AdapterTest {
+
+    function test_shouldFail_whenHubZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(ERC4626Adapter.HubZeroAddress.selector));
+        new ERC4626Adapter(address(0));
+    }
+
+}
+
 contract ERC4626Adapter_Withdraw_Test is ERC4626AdapterTest {
+
+    function test_shouldFail_whenPoolZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(PoolZeroAddress.selector));
+        adapter.withdraw(address(0), owner, asset, amount);
+    }
+
+    function test_shouldFail_whenOwnerZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(OwnerZeroAddress.selector));
+        adapter.withdraw(pool, address(0), asset, amount);
+    }
+
+    function test_shouldFail_whenAssetZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(AssetZeroAddress.selector));
+        adapter.withdraw(pool, owner, address(0), amount);
+    }
+
+    function test_shouldFail_whenAmountZero() external {
+        vm.expectRevert(abi.encodeWithSelector(AmountZero.selector));
+        adapter.withdraw(pool, owner, asset, 0);
+    }
 
     function testFuzz_shouldFail_whenCallerNotActiveLoan(address caller) external {
         vm.assume(caller != activeLoan);
@@ -58,6 +93,7 @@ contract ERC4626Adapter_Withdraw_Test is ERC4626AdapterTest {
     }
 
     function testFuzz_shouldFail_whenVaultAssetNotWithdrawAsset(address invalidAsset) external {
+        vm.assume(invalidAsset != address(0));
         vm.assume(invalidAsset != asset);
 
         vm.expectRevert(abi.encodeWithSelector(ERC4626Adapter.InvalidVaultAsset.selector, invalidAsset, asset));
@@ -66,6 +102,9 @@ contract ERC4626Adapter_Withdraw_Test is ERC4626AdapterTest {
     }
 
     function testFuzz_shouldWithdrawFromVault(address _owner, uint256 _amount) external {
+        vm.assume(_owner != address(0));
+        vm.assume(_amount > 0);
+
         vm.mockCall(pool, abi.encodeWithSelector(IERC4626Like.withdraw.selector), abi.encode(_amount));
 
         vm.expectCall(
@@ -80,7 +119,28 @@ contract ERC4626Adapter_Withdraw_Test is ERC4626AdapterTest {
 
 contract ERC4626Adapter_Supply_Test is ERC4626AdapterTest {
 
+    function test_shouldFail_whenPoolZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(PoolZeroAddress.selector));
+        adapter.supply(address(0), owner, asset, amount);
+    }
+
+    function test_shouldFail_whenOwnerZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(OwnerZeroAddress.selector));
+        adapter.supply(pool, address(0), asset, amount);
+    }
+
+    function test_shouldFail_whenAssetZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(AssetZeroAddress.selector));
+        adapter.supply(pool, owner, address(0), amount);
+    }
+
+    function test_shouldFail_whenAmountZero() external {
+        vm.expectRevert(abi.encodeWithSelector(AmountZero.selector));
+        adapter.supply(pool, owner, asset, 0);
+    }
+
     function testFuzz_shouldFail_whenVaultAssetNotSupplyAsset(address invalidAsset) external {
+        vm.assume(invalidAsset != address(0));
         vm.assume(invalidAsset != asset);
 
         vm.expectRevert(abi.encodeWithSelector(ERC4626Adapter.InvalidVaultAsset.selector, invalidAsset, asset));
@@ -88,12 +148,17 @@ contract ERC4626Adapter_Supply_Test is ERC4626AdapterTest {
     }
 
     function testFuzz_shouldApproveVault(uint256 _amount) external {
+        vm.assume(_amount > 0);
+
         vm.expectCall(asset, abi.encodeWithSignature("approve(address,uint256)", pool, _amount));
 
         adapter.supply(pool, owner, asset, _amount);
     }
 
     function testFuzz_shouldDepositToVault(address _owner, uint256 _amount) external {
+        vm.assume(_owner != address(0));
+        vm.assume(_amount > 0);
+
         vm.mockCall(pool, abi.encodeWithSelector(IERC4626Like.deposit.selector), abi.encode(_amount));
 
         vm.expectCall(pool, abi.encodeWithSelector(IERC4626Like.deposit.selector, _amount, _owner));

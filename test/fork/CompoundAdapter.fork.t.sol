@@ -19,7 +19,7 @@ import {
 } from "pwn_contracts/test/fork/UseCases.fork.t.sol";
 
 
-contract CompoundAdapterTest is UseCasesTest {
+contract CompoundAdapterForkTest is UseCasesTest {
 
     address constant CMP_USDC = 0xc3d688B66703497DAA19211EEdff47f25384cdc3;
     address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;

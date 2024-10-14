@@ -8,6 +8,8 @@ import { PWNHubTags } from "pwn/hub/PWNHubTags.sol";
 import { IPoolAdapter } from "pwn/interfaces/IPoolAdapter.sol";
 import { AddressMissingHubTag } from "pwn/PWNErrors.sol";
 
+import { checkInputs } from "src/pool-adapter/utils/checkInputs.sol";
+
 
 interface IERC4626Like {
     function asset() external view returns (address);
@@ -22,9 +24,14 @@ contract ERC4626Adapter is IPoolAdapter {
 
     PWNHub public immutable hub;
 
+    error HubZeroAddress();
     error InvalidVaultAsset(address creditAsset, address vaultAsset);
 
     constructor(address _hub) {
+        if (_hub == address(0)) {
+            revert HubZeroAddress();
+        }
+
         hub = PWNHub(_hub);
     }
 
@@ -32,6 +39,8 @@ contract ERC4626Adapter is IPoolAdapter {
      * @inheritdoc IPoolAdapter
      */
     function withdraw(address vault, address owner, address asset, uint256 amount) external {
+        checkInputs(vault, owner, asset, amount);
+
         // Check caller is active loan contract
         if (!hub.hasTag(msg.sender, PWNHubTags.ACTIVE_LOAN)) {
             revert AddressMissingHubTag({ addr: msg.sender, tag: PWNHubTags.ACTIVE_LOAN });
@@ -52,6 +61,8 @@ contract ERC4626Adapter is IPoolAdapter {
      * @inheritdoc IPoolAdapter
      */
     function supply(address vault, address owner, address asset, uint256 amount) external {
+        checkInputs(vault, owner, asset, amount);
+
         // Check the asset of the vault
         address vaultAsset = IERC4626Like(vault).asset();
         if (vaultAsset != asset) {
