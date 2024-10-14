@@ -23,7 +23,7 @@ contract CompoundAdapter is IPoolAdapter {
     using MultiToken for MultiToken.Asset;
     using MultiToken for address;
 
-    PWNHub public hub;
+    PWNHub public immutable hub;
 
     constructor(address _hub) {
         hub = PWNHub(_hub);

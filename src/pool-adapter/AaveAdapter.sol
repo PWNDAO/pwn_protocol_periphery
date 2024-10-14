@@ -51,7 +51,7 @@ contract AaveAdapter is IPoolAdapter {
 
     uint256 public constant DEFAULT_MIN_HEALTH_FACTOR = 1.2e18;
 
-    PWNHub public hub;
+    PWNHub public immutable hub;
 
     mapping(address => uint256) public minHealthFactor;
 

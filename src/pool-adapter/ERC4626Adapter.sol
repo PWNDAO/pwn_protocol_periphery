@@ -20,7 +20,7 @@ contract ERC4626Adapter is IPoolAdapter {
     using MultiToken for MultiToken.Asset;
     using MultiToken for address;
 
-    PWNHub public hub;
+    PWNHub public immutable hub;
 
     error InvalidVaultAsset(address creditAsset, address vaultAsset);
 
