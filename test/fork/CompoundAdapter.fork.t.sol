@@ -87,8 +87,7 @@ contract CompoundAdapterForkTest is UseCasesTest {
             callerSpec: PWNSimpleLoan.CallerSpec({
                 refinancingLoanId: 0,
                 revokeNonce: false,
-                nonce: 0,
-                permitData: ""
+                nonce: 0
             }),
             extra: ""
         });
@@ -102,10 +101,7 @@ contract CompoundAdapterForkTest is UseCasesTest {
 
         // Repay loan
         vm.prank(borrower);
-        deployment.simpleLoan.repayLOAN({
-            loanId: loanId,
-            permitData: ""
-        });
+        deployment.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is original lender -> repay funds to the pool
         assertEq(IERC20(USDC).balanceOf(lender), 0);
@@ -147,8 +143,7 @@ contract CompoundAdapterForkTest is UseCasesTest {
             callerSpec: PWNSimpleLoan.CallerSpec({
                 refinancingLoanId: 0,
                 revokeNonce: false,
-                nonce: 0,
-                permitData: ""
+                nonce: 0
             }),
             extra: ""
         });
@@ -169,10 +164,7 @@ contract CompoundAdapterForkTest is UseCasesTest {
 
         // Repay loan
         vm.prank(borrower);
-        deployment.simpleLoan.repayLOAN({
-            loanId: loanId,
-            permitData: ""
-        });
+        deployment.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is not original lender -> repay funds to the Vault
         assertEq(IERC20(USDC).balanceOf(address(deployment.simpleLoan)), originalBalance + 100e6);
@@ -215,8 +207,7 @@ contract CompoundAdapterForkTest is UseCasesTest {
             callerSpec: PWNSimpleLoan.CallerSpec({
                 refinancingLoanId: 0,
                 revokeNonce: false,
-                nonce: 0,
-                permitData: ""
+                nonce: 0
             }),
             extra: ""
         });

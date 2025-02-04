@@ -89,8 +89,7 @@ contract AaveAdapterForkTest is UseCasesTest {
             callerSpec: PWNSimpleLoan.CallerSpec({
                 refinancingLoanId: 0,
                 revokeNonce: false,
-                nonce: 0,
-                permitData: ""
+                nonce: 0
             }),
             extra: ""
         });
@@ -105,10 +104,7 @@ contract AaveAdapterForkTest is UseCasesTest {
 
         // Repay loan
         vm.prank(borrower);
-        deployment.simpleLoan.repayLOAN({
-            loanId: loanId,
-            permitData: ""
-        });
+        deployment.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is original lender -> repay funds to the pool
         assertGe(IERC20(aUSDC).balanceOf(lender), initialAmount); // greater than or equal because pool may have accrued interest
@@ -152,8 +148,7 @@ contract AaveAdapterForkTest is UseCasesTest {
             callerSpec: PWNSimpleLoan.CallerSpec({
                 refinancingLoanId: 0,
                 revokeNonce: false,
-                nonce: 0,
-                permitData: ""
+                nonce: 0
             }),
             extra: ""
         });
@@ -175,10 +170,7 @@ contract AaveAdapterForkTest is UseCasesTest {
 
         // Repay loan
         vm.prank(borrower);
-        deployment.simpleLoan.repayLOAN({
-            loanId: loanId,
-            permitData: ""
-        });
+        deployment.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is not original lender -> repay funds to the Vault
         assertGe(IERC20(aUSDC).balanceOf(lender), 900e6);
@@ -223,8 +215,7 @@ contract AaveAdapterForkTest is UseCasesTest {
             callerSpec: PWNSimpleLoan.CallerSpec({
                 refinancingLoanId: 0,
                 revokeNonce: false,
-                nonce: 0,
-                permitData: ""
+                nonce: 0
             }),
             extra: ""
         });
@@ -272,8 +263,7 @@ contract AaveAdapterForkTest is UseCasesTest {
             callerSpec: PWNSimpleLoan.CallerSpec({
                 refinancingLoanId: 0,
                 revokeNonce: false,
-                nonce: 0,
-                permitData: ""
+                nonce: 0
             }),
             extra: ""
         });
