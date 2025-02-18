@@ -6,10 +6,8 @@ import {
     IAavePoolLike
 } from "src/pool-adapter/AaveAdapter.sol";
 
-import {
-    PWNSimpleLoanSimpleProposal,
-    PWNSimpleLoan
-} from "pwn/loan/terms/simple/proposal/PWNSimpleLoanSimpleProposal.sol";
+import { PWNSimpleLoan } from "pwn/loan/terms/simple/loan/PWNSimpleLoan.sol";
+import { PWNSimpleLoanSimpleProposal } from "pwn/loan/terms/simple/proposal/PWNSimpleLoanSimpleProposal.sol";
 
 import { T20 } from "pwn_contracts/test/helper/T20.sol";
 import {
@@ -40,7 +38,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(deployment.config.owner());
         deployment.config.registerPoolAdapter(AAVE_POOL, address(adapter));
 
-        vm.prank(0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503);
+        vm.prank(aUSDC);
         IERC20(USDC).transfer(lender, initialAmount);
 
         // Supply to pool 1k USDC
@@ -74,7 +72,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
 
         // Create loan
         vm.prank(borrower);
@@ -133,7 +131,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
 
         // Create loan
         vm.prank(borrower);
@@ -200,7 +198,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
 
         // Create loan
         vm.prank(borrower);
@@ -247,7 +245,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
 
         // Try to create loan
         vm.expectRevert();

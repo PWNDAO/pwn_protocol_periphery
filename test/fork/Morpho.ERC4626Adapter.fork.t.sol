@@ -6,10 +6,8 @@ import {
     IERC4626Like
 } from "src/pool-adapter/ERC4626Adapter.sol";
 
-import {
-    PWNSimpleLoanSimpleProposal,
-    PWNSimpleLoan
-} from "pwn/loan/terms/simple/proposal/PWNSimpleLoanSimpleProposal.sol";
+import { PWNSimpleLoan } from "pwn/loan/terms/simple/loan/PWNSimpleLoan.sol";
+import { PWNSimpleLoanSimpleProposal } from "pwn/loan/terms/simple/proposal/PWNSimpleLoanSimpleProposal.sol";
 
 import { T20 } from "pwn_contracts/test/helper/T20.sol";
 import {
@@ -72,7 +70,7 @@ contract MorphoERC4626AdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
 
         // Create loan
         vm.prank(borrower);
@@ -128,7 +126,7 @@ contract MorphoERC4626AdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
 
         // Create loan
         vm.prank(borrower);
@@ -192,7 +190,7 @@ contract MorphoERC4626AdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
 
         // Create loan
         vm.prank(borrower);
