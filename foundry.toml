@@ -1,8 +1,12 @@
 [profile.default]
 solc_version = '0.8.16'
-fs_permissions = [{ access = "read", path = "./lib/pwn_contracts/deployments/latest.json"}]
+fs_permissions = [
+    { access = "read", path = "./lib/pwn_contracts/deployments/latest.json"},
+    { access = "read", path = "./lib/pwn_contracts/deployments/external/external.json"}
+]
 
 
 [rpc_endpoints]
 # Mainnets
 mainnet = "${ETHEREUM_URL}"
+world = "${WORLDCHAIN_URL}"
