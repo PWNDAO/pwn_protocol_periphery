@@ -72,7 +72,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
@@ -131,7 +131,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
@@ -198,7 +198,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
@@ -245,7 +245,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Try to create loan
         vm.expectRevert();

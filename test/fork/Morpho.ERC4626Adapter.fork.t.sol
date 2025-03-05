@@ -70,7 +70,7 @@ contract MorphoERC4626AdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
@@ -126,7 +126,7 @@ contract MorphoERC4626AdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
@@ -190,7 +190,7 @@ contract MorphoERC4626AdapterForkTest is UseCasesTest {
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
