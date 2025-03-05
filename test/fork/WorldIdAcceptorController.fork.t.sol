@@ -21,14 +21,15 @@ import {
 
 contract WorldIdAcceptorControllerForkTest is DeploymentTest {
 
-    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address constant aUSDC = 0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c;
+    address constant WLD = 0x2cFc85d8E48F8EAB294be644d9E25C3030863003;
+    address constant uniWLD = 0x610E319b3A3Ab56A0eD5562927D37c233774ba39;
 
     IWorldID constant worldId = IWorldID(0x17B354dD2595411ff79041f930e491A4Df39A278);
     string constant appId = "app_17abe44eaf47c99566f5378aa4e19463";
     string constant actionId = "verify-humanness";
 
     WorldIdAcceptorController controller;
+    WorldIdAcceptorController.AcceptorData acceptorData;
 
     constructor() {
         deploymentsSubpath = "/lib/pwn_contracts";
@@ -39,7 +40,7 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
 
         super.setUp();
 
-        controller = new WorldIdAcceptorController(worldId, appId, actionId);
+        // > Prepare protocol
         deployment.simpleLoanSimpleProposal = new PWNSimpleLoanSimpleProposal(
             address(deployment.hub),
             address(deployment.revokedNonce),
@@ -53,19 +54,28 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
         bytes32[] memory tags = new bytes32[](2);
         tags[0] = PWNHubTags.LOAN_PROPOSAL;
         tags[1] = PWNHubTags.NONCE_MANAGER;
-
         vm.prank(deployment.protocolTimelock);
         deployment.hub.setTags(addresses, tags, true);
+        // < Prepare protocol
 
-        vm.startPrank(aUSDC);
-        IERC20(USDC).transfer(lender, 100e6);
-        IERC20(USDC).transfer(borrower, 100e6);
+        controller = new WorldIdAcceptorController(worldId, appId, actionId);
+        acceptorData = WorldIdAcceptorController.AcceptorData({ // test verification data
+            root: 0,
+            nullifierHash: 1,
+            proof: [uint256(2), 3, 4, 5, 6, 7, 8, 9]
+        });
+
+        vm.startPrank(uniWLD);
+        IERC20(WLD).transfer(lender, 100 ether);
+        IERC20(WLD).transfer(borrower, 100 ether);
         vm.stopPrank();
 
         vm.prank(lender);
-        IERC20(USDC).approve(address(deployment.simpleLoan), type(uint256).max);
+        IERC20(WLD).approve(address(deployment.simpleLoan), type(uint256).max);
         vm.prank(borrower);
-        IERC20(USDC).approve(address(deployment.simpleLoan), type(uint256).max);
+        IERC20(WLD).approve(address(deployment.simpleLoan), type(uint256).max);
+
+        vm.label(address(worldId), "WorldId");
     }
 
     function test_shouldPass_whenValidWorldId() external {
@@ -73,13 +83,13 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
 
         PWNSimpleLoanSimpleProposal.Proposal memory proposal = PWNSimpleLoanSimpleProposal.Proposal({
             collateralCategory: MultiToken.Category.ERC20,
-            collateralAddress: USDC,
+            collateralAddress: WLD,
             collateralId: 0,
-            collateralAmount: 10e6,
+            collateralAmount: 10 ether,
             checkCollateralStateFingerprint: false,
             collateralStateFingerprint: bytes32(0),
-            creditAddress: USDC,
-            creditAmount: 10e6,
+            creditAddress: WLD,
+            creditAmount: 10 ether,
             availableCreditLimit: 0,
             utilizedCreditId: bytes32(0),
             fixedInterestAmount: 0,
@@ -97,13 +107,9 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
             loanContract: address(deployment.simpleLoan)
         });
 
-        PWNSimpleLoanSimpleProposal.ProposalValues memory proposalValues = PWNSimpleLoanSimpleProposal.ProposalValues({
-            acceptorControllerData: abi.encode(WorldIdAcceptorController.AcceptorData({
-                root: 0,
-                nullifierHash: 1,
-                proof: [uint256(2), 3, 4, 5, 6, 7, 8, 9]
-            }))
-        });
+        PWNSimpleLoanSimpleProposal.ProposalValues memory proposalValues = PWNSimpleLoanSimpleProposal.ProposalValues(
+            abi.encode(acceptorData)
+        );
 
         vm.prank(lender);
         deployment.simpleLoanSimpleProposal.makeProposal(proposal);

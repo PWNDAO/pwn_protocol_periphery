@@ -3,7 +3,9 @@ pragma solidity 0.8.16;
 
 import { UniV3PosStateFingerpringComputer }  from "src/state-fingerprint-computer/UniV3PosStateFingerpringComputer.sol";
 
+import { PWNHubTags } from "pwn/hub/PWNHubTags.sol";
 import { PWNSimpleLoanProposal } from "pwn/loan/terms/simple/proposal/PWNSimpleLoanProposal.sol";
+import { PWNSimpleLoanSimpleProposal } from "pwn/loan/terms/simple/proposal/PWNSimpleLoanSimpleProposal.sol";
 
 import {
     UseCasesTest,
@@ -49,6 +51,24 @@ contract UniV3PosStateFingerprintComputerForkTest is UseCasesTest {
 
     function setUp() override public {
         super.setUp();
+
+        // > Prepare protocol
+        deployment.simpleLoanSimpleProposal = new PWNSimpleLoanSimpleProposal(
+            address(deployment.hub),
+            address(deployment.revokedNonce),
+            address(deployment.config),
+            address(deployment.utilizedCredit)
+        );
+
+        address[] memory addresses = new address[](2);
+        addresses[0] = address(deployment.simpleLoanSimpleProposal);
+        addresses[1] = address(deployment.simpleLoanSimpleProposal);
+        bytes32[] memory tags = new bytes32[](2);
+        tags[0] = PWNHubTags.LOAN_PROPOSAL;
+        tags[1] = PWNHubTags.NONCE_MANAGER;
+        vm.prank(deployment.protocolTimelock);
+        deployment.hub.setTags(addresses, tags, true);
+        // < Prepare protocol
 
         computer = new UniV3PosStateFingerpringComputer(UNI_V3_POS);
         vm.prank(deployment.config.owner());
