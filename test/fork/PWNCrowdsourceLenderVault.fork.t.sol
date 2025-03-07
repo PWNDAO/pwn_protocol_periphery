@@ -6,12 +6,10 @@ import { MultiToken, IERC20 } from "MultiToken/MultiToken.sol";
 import { PWNInstallmentsLoan } from "pwn/loan/terms/simple/loan/PWNInstallmentsLoan.sol";
 import { PWNSimpleLoanElasticChainlinkProposal } from "pwn/loan/terms/simple/proposal/PWNSimpleLoanElasticChainlinkProposal.sol";
 
-import { PWNCrowdsourceLenderVault, IPWNLenderHook } from "src/crowdsource/PWNCrowdsourceLenderVault.sol";
+import { PWNCrowdsourceLenderVault, IPWNLenderHook, ERC20 } from "src/crowdsource/PWNCrowdsourceLenderVault.sol";
 
-import {
-    DeploymentTest,
-    PWNHubTags
-} from "pwn_contracts/test/DeploymentTest.t.sol";
+import { DeploymentTest, PWNHubTags } from "pwn_contracts/test/DeploymentTest.t.sol";
+import { T20 } from "pwn_contracts/test/helper/T20.sol";
 
 
 contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
@@ -28,6 +26,8 @@ contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
     PWNInstallmentsLoan.LenderSpec lenderSpec;
     PWNSimpleLoanElasticChainlinkProposal.Proposal proposal;
     PWNSimpleLoanElasticChainlinkProposal.ProposalValues proposalValues;
+    PWNCrowdsourceLenderVault.Terms terms;
+    T20 noAaveToken;
 
     PWNCrowdsourceLenderVault lenderVault;
     address[4] lenders;
@@ -41,6 +41,8 @@ contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
         vm.createSelectFork("mainnet");
 
         super.setUp();
+
+        noAaveToken = new T20();
 
         // > Prepare protocol
         loan = new PWNInstallmentsLoan(
@@ -71,73 +73,16 @@ contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
         deployment.chainlinkFeedRegistry.confirmFeed(ETH, USD, 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
         deployment.chainlinkFeedRegistry.proposeFeed(address(USDC), USD, 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6);
         deployment.chainlinkFeedRegistry.confirmFeed(address(USDC), USD, 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6);
+        // Use the same price feed for noAaveToken
+        deployment.chainlinkFeedRegistry.proposeFeed(address(noAaveToken), USD, 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6);
+        deployment.chainlinkFeedRegistry.confirmFeed(address(noAaveToken), USD, 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6);
         vm.stopPrank();
         // < Prepare protocol
 
-        address[] memory intermediaryDenominations = new address[](1);
-        intermediaryDenominations[0] = USD;
-
-        bool[] memory invertFlags = new bool[](2);
-        invertFlags[0] = false;
-        invertFlags[1] = true;
-
-        proposal = PWNSimpleLoanElasticChainlinkProposal.Proposal({
-            collateralCategory: MultiToken.Category.ERC20,
-            collateralAddress: address(WETH),
-            collateralId: 0,
-            checkCollateralStateFingerprint: false,
-            collateralStateFingerprint: bytes32(0),
-            creditAddress: address(USDC),
-            feedIntermediaryDenominations: intermediaryDenominations,
-            feedInvertFlags: invertFlags,
-            loanToValue: 8000,
-            minCreditAmount: 150_000e6,
-            availableCreditLimit: 0,
-            utilizedCreditId: bytes32(0),
-            fixedInterestAmount: 0,
-            accruingInterestAPR: 100,
-            durationOrDate: 730 days,
-            expiration: uint40(block.timestamp + 60 days),
-            allowedAcceptor: borrower,
-            proposer: address(0), // to be set
-            proposerSpecHash: bytes32(0), // to be set
-            isOffer: true,
-            refinancingLoanId: 0,
-            nonceSpace: 0,
-            nonce: 0,
-            loanContract: address(loan)
-        });
-        proposalValues = PWNSimpleLoanElasticChainlinkProposal.ProposalValues({
-            creditAmount: 180_000e6
-        });
-
-        lenderVault = new PWNCrowdsourceLenderVault(
-            address(loan), "Bordel mortgage share", "BORDEL", PWNCrowdsourceLenderVault.Terms({
-                collateralAddress: proposal.collateralAddress,
-                creditAddress: proposal.creditAddress,
-                feedIntermediaryDenominations: proposal.feedIntermediaryDenominations,
-                feedInvertFlags: proposal.feedInvertFlags,
-                loanToValue: proposal.loanToValue,
-                minCreditAmount: proposal.minCreditAmount,
-                fixedInterestAmount: proposal.fixedInterestAmount,
-                accruingInterestAPR: proposal.accruingInterestAPR,
-                durationOrDate: proposal.durationOrDate,
-                expiration: proposal.expiration,
-                allowedAcceptor: proposal.allowedAcceptor
-            })
-        );
-
-        lenderSpec = PWNInstallmentsLoan.LenderSpec({
-            lenderHook: IPWNLenderHook(address(lenderVault)),
-            lenderHookParameters: ""
-        });
-
-        proposal.proposer = address(lenderVault);
-        proposal.proposerSpecHash = loan.getLenderSpecHash(lenderSpec);
-
-        vm.label(address(lenderVault.aave()), "Aave");
-
         lenders = [makeAddr("lender1"), makeAddr("lender2"), makeAddr("lender3"), makeAddr("lender4")];
+
+        _deployWith(address(USDC), 6);
+
         for (uint256 i; i < lenders.length; ++i) {
             vm.startPrank(aUSDC);
             USDC.transfer(lenders[i], initialAmount);
@@ -155,8 +100,74 @@ contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
         USDC.approve(address(loan), type(uint256).max);
         vm.stopPrank();
 
+        vm.label(address(lenderVault.aave()), "Aave");
         vm.label(address(USDC), "USDC");
         vm.label(address(WETH), "WETH");
+        vm.label(address(noAaveToken), "NO-AAVE");
+    }
+
+
+    function _deployWith(address creditAddress, uint256 decimals) internal {
+        address[] memory intermediaryDenominations = new address[](1);
+        intermediaryDenominations[0] = USD;
+
+        bool[] memory invertFlags = new bool[](2);
+        invertFlags[0] = false;
+        invertFlags[1] = true;
+
+        proposal = PWNSimpleLoanElasticChainlinkProposal.Proposal({
+            collateralCategory: MultiToken.Category.ERC20,
+            collateralAddress: address(WETH),
+            collateralId: 0,
+            checkCollateralStateFingerprint: false,
+            collateralStateFingerprint: bytes32(0),
+            creditAddress: creditAddress,
+            feedIntermediaryDenominations: intermediaryDenominations,
+            feedInvertFlags: invertFlags,
+            loanToValue: 8000,
+            minCreditAmount: 150_000 * 10 ** decimals,
+            availableCreditLimit: 0,
+            utilizedCreditId: bytes32(0),
+            fixedInterestAmount: 0,
+            accruingInterestAPR: 36500,
+            durationOrDate: 730 days,
+            expiration: uint40(block.timestamp + 60 days),
+            allowedAcceptor: borrower,
+            proposer: address(0), // to be set
+            proposerSpecHash: bytes32(0), // to be set
+            isOffer: true,
+            refinancingLoanId: 0,
+            nonceSpace: 0,
+            nonce: 0,
+            loanContract: address(loan)
+        });
+        proposalValues = PWNSimpleLoanElasticChainlinkProposal.ProposalValues({
+            creditAmount: 180_000 * 10 ** decimals
+        });
+
+        terms = PWNCrowdsourceLenderVault.Terms({
+            collateralAddress: proposal.collateralAddress,
+            creditAddress: proposal.creditAddress,
+            feedIntermediaryDenominations: proposal.feedIntermediaryDenominations,
+            feedInvertFlags: proposal.feedInvertFlags,
+            loanToValue: proposal.loanToValue,
+            minCreditAmount: proposal.minCreditAmount,
+            fixedInterestAmount: proposal.fixedInterestAmount,
+            accruingInterestAPR: proposal.accruingInterestAPR,
+            durationOrDate: proposal.durationOrDate,
+            expiration: proposal.expiration,
+            allowedAcceptor: proposal.allowedAcceptor
+        });
+
+        lenderVault = new PWNCrowdsourceLenderVault(address(loan), "Bordel mortgage share", "BORDEL", terms);
+
+        lenderSpec = PWNInstallmentsLoan.LenderSpec({
+            lenderHook: IPWNLenderHook(address(lenderVault)),
+            lenderHookParameters: ""
+        });
+
+        proposal.proposer = address(lenderVault);
+        proposal.proposerSpecHash = loan.getLenderSpecHash(lenderSpec);
     }
 
 }
@@ -246,6 +257,49 @@ contract PWNCrowdsourceLenderVault_Pooling_ForkTest is PWNCrowdsourceLenderVault
         assertEq(lenderVault.totalAssets(), poolingTotalAssets); // no change in total assets
         assertEq(IERC20(aUSDC).balanceOf(address(lenderVault)), 0); // no aave deposit after loan start
         assertEq(USDC.balanceOf(borrower), proposalValues.creditAmount); // borrower received the credit
+        assertEq(lenderVault.totalCollateralAssets(), 0);
+        assertEq(lenderVault.loanId(), loanId);
+    }
+
+    function test_loanStart_whenNoAaveToken() external {
+        _deployWith(address(noAaveToken), 18);
+        initialAmount = 50_000e18;
+
+        for (uint256 i; i < lenders.length; ++i) {
+            noAaveToken.mint(lenders[i], initialAmount);
+
+            vm.startPrank(lenders[i]);
+            noAaveToken.approve(address(lenderVault), type(uint256).max);
+            lenderVault.deposit(initialAmount, lenders[i]);
+            vm.stopPrank();
+        }
+
+        vm.prank(aWETH);
+        WETH.transfer(borrower, 1000e18);
+
+        vm.startPrank(borrower);
+        WETH.approve(address(loan), type(uint256).max);
+        noAaveToken.approve(address(loan), type(uint256).max);
+        vm.stopPrank();
+
+        uint256 poolingTotalAssets = lenderVault.totalAssets();
+        assertApproxEqAbs(noAaveToken.balanceOf(address(lenderVault)), 4 * initialAmount, 2);
+        assertEq(noAaveToken.balanceOf(borrower), 0);
+
+        bytes memory proposalData = deployment.simpleLoanElasticChainlinkProposal.encodeProposalData(proposal, proposalValues);
+        vm.prank(borrower);
+        uint256 loanId = loan.createLOAN({
+            proposalSpec: PWNInstallmentsLoan.ProposalSpec({
+                proposalContract: address(deployment.simpleLoanElasticChainlinkProposal),
+                proposalData: proposalData,
+                signature: ""
+            }),
+            lenderSpec: lenderSpec,
+            extra: ""
+        });
+
+        assertEq(lenderVault.totalAssets(), poolingTotalAssets); // no change in total assets
+        assertEq(noAaveToken.balanceOf(borrower), proposalValues.creditAmount); // borrower received the credit
         assertEq(lenderVault.totalCollateralAssets(), 0);
         assertEq(lenderVault.loanId(), loanId);
     }
@@ -364,6 +418,48 @@ contract PWNCrowdsourceLenderVault_Running_ForkTest is PWNCrowdsourceLenderVault
         vm.expectRevert();
         vm.prank(lenders[0]);
         lenderVault.mint(1, lenders[0]);
+    }
+
+    function test_shouldAccrueShareValue() external {
+        uint256 originalTotalShares = lenderVault.totalSupply();
+        assertApproxEqAbs(lenderVault.convertToAssets(1e6), 1e6, 2);
+
+        vm.warp(block.timestamp + 3 days); // 3% interest accrual
+
+        uint256 principal = proposalValues.creditAmount;
+        uint256 totalAssets = principal * 103 / 100 + unutilizedAmount;
+        assertApproxEqAbs(lenderVault.totalAssets(), totalAssets, 2);
+        assertApproxEqAbs(lenderVault.convertToAssets(1e6), totalAssets * 1e6 / originalTotalShares, 2);
+
+        uint256 beforeClaimAssets = lenderVault.convertToAssets(1e6);
+
+        vm.prank(borrower);
+        loan.repayLOAN(loanId, 10_000e6);
+        principal -= 10_000e6 - (principal * 3 / 100);
+
+        vm.prank(lenders[0]);
+        originalTotalShares -= lenderVault.withdraw(20_000e6, lenders[0], lenders[0]);
+        totalAssets -= 20_000e6;
+
+        // Claim should not affect the share value
+        assertApproxEqAbs(lenderVault.convertToAssets(1e6), beforeClaimAssets, 2);
+        assertApproxEqAbs(lenderVault.convertToAssets(1e6), totalAssets * 1e6 / originalTotalShares, 2);
+
+        vm.warp(block.timestamp + 10 days); // 10% interest accrual
+
+        totalAssets += principal * 10 / 100;
+        assertApproxEqAbs(lenderVault.totalAssets(), totalAssets, 2);
+        assertApproxEqAbs(lenderVault.convertToAssets(1e6), totalAssets * 1e6 / originalTotalShares, 2, "share: 3");
+
+        vm.prank(borrower);
+        loan.repayLOAN(loanId, 60_000e6);
+        principal -= 60_000e6 - (principal * 10 / 100);
+
+        vm.warp(block.timestamp + 7 days); // 7% interest accrual
+
+        totalAssets += principal * 7 / 100;
+        assertApproxEqAbs(lenderVault.totalAssets(), totalAssets, 2);
+        assertApproxEqAbs(lenderVault.convertToAssets(1e6), totalAssets * 1e6 / originalTotalShares, 2, "share: 4");
     }
 
     function test_loanRepaid() external {

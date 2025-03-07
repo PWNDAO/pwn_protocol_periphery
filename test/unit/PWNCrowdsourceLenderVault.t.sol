@@ -13,7 +13,8 @@ import {
     PWNInstallmentsLoan,
     MultiToken,
     IERC20,
-    IERC20Metadata
+    IERC20Metadata,
+    Math
 } from "src/crowdsource/PWNCrowdsourceLenderVault.sol";
 
 import { PWNCrowdsourceLenderVaultHarness } from "test/harness/PWNCrowdsourceLenderVaultHarness.sol";
@@ -23,6 +24,7 @@ using MultiToken for address;
 abstract contract PWNCrowdsourceLenderVaultTest is Test {
 
     bytes32 internal constant BALANCES_SLOT = bytes32(uint256(0)); // `_balances` mapping position (ERC20)
+    bytes32 internal constant TOTAL_SUPPLY_SLOT = bytes32(uint256(2)); // `_totalSupply` position (ERC20)
 
     PWNCrowdsourceLenderVaultHarness crowdsource;
     PWNCrowdsourceLenderVault.Terms terms;
@@ -145,6 +147,10 @@ abstract contract PWNCrowdsourceLenderVaultTest is Test {
 
     function _storeReceiptBalance(address _owner, uint256 _balance) internal {
         vm.store(address(crowdsource), keccak256(abi.encode(_owner, BALANCES_SLOT)), bytes32(_balance));
+    }
+
+    function _storeReceiptTotalSupply(uint256 _totalSupply) internal {
+        vm.store(address(crowdsource), TOTAL_SUPPLY_SLOT, bytes32(_totalSupply));
     }
 
 }
@@ -793,6 +799,13 @@ contract PWNCrowdsourceLenderVault_PreviewCollateralRedeem_Test is PWNCrowdsourc
 
         _mockStage(PWNCrowdsourceLenderVault.Stage.RUNNING);
         vm.expectRevert("PWNCrowdsourceLenderVault: collateral redeem disabled");
+        crowdsource.previewCollateralRedeem(100 ether);
+    }
+
+    function test_shouldPass_whenRunningStage_whenLoanDefaulted() external {
+        _mockStage(PWNCrowdsourceLenderVault.Stage.RUNNING);
+        _mockLoan(4, loan);
+
         crowdsource.previewCollateralRedeem(100 ether);
     }
 
