@@ -12,7 +12,8 @@ import {
     PWNSimpleLoanElasticChainlinkProposal,
     PWNInstallmentsLoan,
     MultiToken,
-    IERC20
+    IERC20,
+    IERC20Metadata
 } from "src/crowdsource/PWNCrowdsourceLenderVault.sol";
 
 import { PWNCrowdsourceLenderVaultHarness } from "test/harness/PWNCrowdsourceLenderVaultHarness.sol";
@@ -31,6 +32,7 @@ abstract contract PWNCrowdsourceLenderVaultTest is Test {
     address proposalContract = 0xBA58E16BE93dAdcBB74a194bDfD9E5933b24016B;
     address aave = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
     address loanToken = 0x4440C069272cC34b80C7B11bEE657D0349Ba9C23;
+    bytes32 proposalHash = keccak256("proposalHash");
 
     address[4] lender;
 
@@ -60,11 +62,18 @@ abstract contract PWNCrowdsourceLenderVaultTest is Test {
         vm.mockCall(terms.creditAddress, abi.encodeWithSelector(IERC20.approve.selector), abi.encode(true));
         vm.mockCall(terms.creditAddress, abi.encodeWithSelector(IERC20.transferFrom.selector), abi.encode(true));
         vm.mockCall(terms.creditAddress, abi.encodeWithSelector(IERC20.transfer.selector), abi.encode(true));
+        vm.mockCall(terms.creditAddress, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(18));
         vm.mockCall(terms.collateralAddress, abi.encodeWithSelector(IERC20.transfer.selector), abi.encode(true));
+        vm.mockCall(terms.collateralAddress, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(18));
         vm.mockCall(
             proposalContract,
             abi.encodeWithSelector(PWNSimpleLoanElasticChainlinkProposal.makeProposal.selector),
-            abi.encode(keccak256("proposalHash"))
+            abi.encode(proposalHash)
+        );
+        vm.mockCall(
+            loanContract,
+            abi.encodeWithSelector(PWNInstallmentsLoan.getLenderSpecHash.selector),
+            abi.encode(keccak256("lenderSpecHash"))
         );
 
         loan = PWNInstallmentsLoan.LOAN({
@@ -299,16 +308,12 @@ contract PWNCrowdsourceLenderVault_MaxMint_Test is PWNCrowdsourceLenderVaultTest
 
 contract PWNCrowdsourceLenderVault_MaxWithdraw_Test is PWNCrowdsourceLenderVaultTest {
 
-    function test_shouldReturnUserLiquidity_whenNotRunningStage() external {
+    function test_shouldReturnUserLiquidity_whenPoolingStage() external {
         _storeReceiptBalance(lender[0], 1 ether);
 
         crowdsource.workaround_setConvertToAssetsRatio(12e4);
         _mockStage(PWNCrowdsourceLenderVault.Stage.POOLING);
         assertEq(crowdsource.maxWithdraw(lender[0]), 12 ether);
-
-        crowdsource.workaround_setConvertToAssetsRatio(0.5e4);
-        _mockStage(PWNCrowdsourceLenderVault.Stage.ENDING);
-        assertEq(crowdsource.maxWithdraw(lender[0]), 0.5 ether);
     }
 
     function test_shouldReturnUserLiquidity_whenRunningStage_whenLessThanAvailableLiquidity() external {
@@ -329,6 +334,11 @@ contract PWNCrowdsourceLenderVault_MaxWithdraw_Test is PWNCrowdsourceLenderVault
         crowdsource.workaround_setConvertToAssetsRatio(50e4);
 
         assertEq(crowdsource.maxWithdraw(lender[0]), 150 ether);
+    }
+
+    function test_shouldBeZero_whenEndingStage() external {
+        _mockStage(PWNCrowdsourceLenderVault.Stage.ENDING);
+        assertEq(crowdsource.maxWithdraw(lender[0]), 0);
     }
 
 }
@@ -468,11 +478,11 @@ contract PWNCrowdsourceLenderVault_Deposit_Test is PWNCrowdsourceLenderVaultTest
 
     function test_shouldRevert_whenNotPoolingStage() external {
         _mockStage(PWNCrowdsourceLenderVault.Stage.RUNNING);
-        vm.expectRevert("ERC4626: deposit more than max");
+        vm.expectRevert("PWNCrowdsourceLenderVault: deposit disabled");
         crowdsource.deposit(100 ether, lender[0]);
 
         _mockStage(PWNCrowdsourceLenderVault.Stage.ENDING);
-        vm.expectRevert("ERC4626: deposit more than max");
+        vm.expectRevert("PWNCrowdsourceLenderVault: deposit disabled");
         crowdsource.deposit(100 ether, lender[0]);
     }
 
@@ -517,11 +527,11 @@ contract PWNCrowdsourceLenderVault_Mint_Test is PWNCrowdsourceLenderVaultTest {
 
     function test_shouldRevert_whenNotPoolingStage() external {
         _mockStage(PWNCrowdsourceLenderVault.Stage.RUNNING);
-        vm.expectRevert("ERC4626: mint more than max");
+        vm.expectRevert("PWNCrowdsourceLenderVault: mint disabled");
         crowdsource.mint(100 ether, lender[0]);
 
         _mockStage(PWNCrowdsourceLenderVault.Stage.ENDING);
-        vm.expectRevert("ERC4626: mint more than max");
+        vm.expectRevert("PWNCrowdsourceLenderVault: mint disabled");
         crowdsource.mint(100 ether, lender[0]);
     }
 
@@ -796,7 +806,7 @@ contract PWNCrowdsourceLenderVault_PreviewCollateralRedeem_Test is PWNCrowdsourc
 }
 
 
-contract PWNCrowdsourceLenderVault_OnERC721Received_Test is PWNCrowdsourceLenderVaultTest {
+contract PWNCrowdsourceLenderVault_OnLoanCreated_Test is PWNCrowdsourceLenderVaultTest {
 
     function setUp() override public virtual {
         super.setUp();
@@ -809,44 +819,50 @@ contract PWNCrowdsourceLenderVault_OnERC721Received_Test is PWNCrowdsourceLender
 
     function test_shouldRevert_whenSenderNotLoanContract() external {
         vm.expectRevert();
-        crowdsource.onERC721Received(address(loanContract), address(0), 1, "");
+        crowdsource.onLoanCreated(1, proposalHash, address(crowdsource), loan.creditAddress, loan.principalAmount, "");
     }
 
-    function test_shouldRevert_whenOperatorNotLoanContract() external {
+    function test_shouldRevert_whenLenderNotThis() external {
         vm.expectRevert();
         vm.prank(address(loanContract));
-        crowdsource.onERC721Received(address(this), address(0), 1, "");
+        crowdsource.onLoanCreated(2, proposalHash, address(crowdsource), loan.creditAddress, loan.principalAmount, "");
     }
 
-    function test_shouldRevert_whenFromNotAddressZero() external {
+    function test_shouldRevert_whenProposalHashMismatch() external {
         vm.expectRevert();
         vm.prank(address(loanContract));
-        crowdsource.onERC721Received(address(loanContract), address(this), 1, "");
+        crowdsource.onLoanCreated(1, keccak256("diff proposalHash"), address(crowdsource), loan.creditAddress, loan.principalAmount, "");
     }
 
-    function test_shouldRevert_whenLoanOwnerNotThis() external {
+    function test_shouldRevert_whenCreditAddressMismatch() external {
         vm.expectRevert();
         vm.prank(address(loanContract));
-        crowdsource.onERC721Received(address(loanContract), address(0), 2, "");
+        crowdsource.onLoanCreated(1, proposalHash, address(crowdsource), makeAddr("diff creditAddr"), loan.principalAmount, "");
+    }
+
+    function test_shouldRevert_whenLenderHookParamsNotEmpty() external {
+        vm.expectRevert();
+        vm.prank(address(loanContract));
+        crowdsource.onLoanCreated(1, proposalHash, address(crowdsource), loan.creditAddress, loan.principalAmount, "non-empty params");
     }
 
     function test_shouldRevert_whenNotPoolingStage() external {
         _mockStage(PWNCrowdsourceLenderVault.Stage.RUNNING);
         vm.expectRevert();
         vm.prank(address(loanContract));
-        crowdsource.onERC721Received(address(loanContract), address(0), 1, "");
+        crowdsource.onLoanCreated(1, proposalHash, address(crowdsource), loan.creditAddress, loan.principalAmount, "");
 
         _mockStage(PWNCrowdsourceLenderVault.Stage.ENDING);
         vm.expectRevert();
         vm.prank(address(loanContract));
-        crowdsource.onERC721Received(address(loanContract), address(0), 1, "");
+        crowdsource.onLoanCreated(1, proposalHash, address(crowdsource), loan.creditAddress, loan.principalAmount, "");
     }
 
     function test_shouldSetLoanId() external {
         assertEq(crowdsource.loanId(), 0);
 
         vm.prank(address(loanContract));
-        crowdsource.onERC721Received(address(loanContract), address(0), 1, "");
+        crowdsource.onLoanCreated(1, proposalHash, address(crowdsource), loan.creditAddress, loan.principalAmount, "");
 
         assertEq(crowdsource.loanId(), 1);
     }
@@ -859,10 +875,10 @@ contract PWNCrowdsourceLenderVault_OnERC721Received_Test is PWNCrowdsourceLender
         vm.mockCall(loanToken, abi.encodeWithSelector(IERC721.ownerOf.selector, 1), abi.encode(address(crowdsource)));
         _mockStage(PWNCrowdsourceLenderVault.Stage.POOLING);
 
-        vm.expectCall(aave, abi.encodeWithSelector(IAavePoolLike.withdraw.selector, terms.creditAddress, type(uint256).max, address(crowdsource)));
+        vm.expectCall(aave, abi.encodeWithSelector(IAavePoolLike.withdraw.selector, loan.creditAddress, type(uint256).max, address(crowdsource)));
 
         vm.prank(address(loanContract));
-        crowdsource.onERC721Received(address(loanContract), address(0), 1, "");
+        crowdsource.onLoanCreated(1, proposalHash, address(crowdsource), loan.creditAddress, loan.principalAmount, "");
     }
 
 }

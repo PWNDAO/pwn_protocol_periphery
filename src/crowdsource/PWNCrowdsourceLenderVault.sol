@@ -3,10 +3,9 @@ pragma solidity 0.8.16;
 
 import { MultiToken } from "MultiToken/MultiToken.sol";
 
-import { ERC4626, IERC20, ERC20, Math, SafeERC20 } from "openzeppelin/token/ERC20/extensions/ERC4626.sol";
-import { IERC721Receiver } from "openzeppelin/interfaces/IERC721Receiver.sol";
+import { ERC4626, ERC20, IERC20, IERC20Metadata, Math, SafeERC20 } from "openzeppelin/token/ERC20/extensions/ERC4626.sol";
 
-import { PWNInstallmentsLoan, LOANStatus } from "pwn/loan/terms/simple/loan/PWNInstallmentsLoan.sol";
+import { PWNInstallmentsLoan, LOANStatus, IPWNLenderHook } from "pwn/loan/terms/simple/loan/PWNInstallmentsLoan.sol";
 import {
     PWNSimpleLoanElasticChainlinkProposal
 } from "pwn/loan/terms/simple/proposal/PWNSimpleLoanElasticChainlinkProposal.sol";
@@ -15,7 +14,7 @@ import { PWNLOAN } from "pwn/loan/token/PWNLOAN.sol";
 import { IAavePoolLike } from "src/interfaces/IAavePoolLike.sol";
 
 
-contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
+contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
     using Math for uint256;
 
     IAavePoolLike constant public aave = IAavePoolLike(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
@@ -24,9 +23,10 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
 
     PWNInstallmentsLoan immutable public loanContract; // = PWNInstallmentsLoan(address(10000000)); // TBD
 
-    address immutable internal creditAddr;
-    address immutable internal aCreditAddr;
+    address immutable internal aAsset;
     address immutable internal collateralAddr;
+    uint8 immutable internal collateralDecimals;
+    bytes32 immutable internal proposalHash;
 
     uint256 public loanId;
     bool internal loanEnded;
@@ -65,9 +65,15 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
         Terms memory _terms
     ) ERC4626(IERC20(_terms.creditAddress)) ERC20(_name, _symbol) {
         loanContract = PWNInstallmentsLoan(_loan);
-        creditAddr = _terms.creditAddress;
+
         collateralAddr = _terms.collateralAddress;
-        proposalContract.makeProposal(
+        (bool success, uint8 decimals) = _tryGetAssetDecimals_child(IERC20(collateralAddr));
+        if (!success) {
+            revert("PWNCrowdsourceLenderVault: collateral token missing decimals");
+        }
+        collateralDecimals = decimals;
+
+        proposalHash = proposalContract.makeProposal(
             PWNSimpleLoanElasticChainlinkProposal.Proposal({
                 collateralCategory: MultiToken.Category.ERC20,
                 collateralAddress: _terms.collateralAddress,
@@ -87,7 +93,10 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
                 expiration: _terms.expiration,
                 allowedAcceptor: _terms.allowedAcceptor,
                 proposer: address(this),
-                proposerSpecHash: bytes32(0),
+                proposerSpecHash: loanContract.getLenderSpecHash(PWNInstallmentsLoan.LenderSpec({
+                    lenderHook: IPWNLenderHook(address(this)),
+                    lenderHookParameters: ""
+                })),
                 isOffer: true,
                 refinancingLoanId: 0,
                 nonceSpace: 0,
@@ -95,11 +104,13 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
                 loanContract: address(loanContract)
             })
         );
-        IERC20(creditAddr).approve(address(loanContract), type(uint256).max);
-        IAavePoolLike.ReserveData memory reserveData = aave.getReserveData(creditAddr);
-        aCreditAddr = reserveData.aTokenAddress;
-        if (aCreditAddr != address(0)) {
-            IERC20(creditAddr).approve(address(aave), type(uint256).max);
+
+        IERC20(asset()).approve(address(loanContract), type(uint256).max);
+
+        IAavePoolLike.ReserveData memory reserveData = aave.getReserveData(asset());
+        aAsset = reserveData.aTokenAddress;
+        if (aAsset != address(0)) {
+            IERC20(asset()).approve(address(aave), type(uint256).max);
         }
     }
 
@@ -122,9 +133,9 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
         uint256 additionalAssets;
         Stage _stage = stage();
         if (_stage == Stage.POOLING) {
-            if (aCreditAddr != address(0)) {
+            if (aAsset != address(0)) {
                 // Note: assuming aToken:token ratio is always 1:1
-                additionalAssets = IERC20(aCreditAddr).balanceOf(address(this));
+                additionalAssets = IERC20(aAsset).balanceOf(address(this));
             }
         } else if (_stage == Stage.RUNNING) {
             (uint8 status, PWNInstallmentsLoan.LOAN memory loan) = loanContract.getLOAN(loanId);
@@ -133,7 +144,7 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
                 additionalAssets += loanContract.loanRepaymentAmount(loanId);
             }
         }
-        return IERC20(creditAddr).balanceOf(address(this)) + additionalAssets;
+        return IERC20(asset()).balanceOf(address(this)) + additionalAssets;
     }
 
     // # Max
@@ -147,8 +158,13 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
     }
 
     function maxWithdraw(address owner) public view override returns (uint256 max) {
+        Stage _stage = stage();
+        if (_stage == Stage.ENDING) {
+            return 0; // no withdraws allowed, use redeem
+        }
+
         max = _convertToAssets(balanceOf(owner), Math.Rounding.Down);
-        if (stage() == Stage.RUNNING) {
+        if (_stage == Stage.RUNNING) {
             max = Math.min(max, _availableLiquidity());
         }
     }
@@ -183,46 +199,59 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
 
     // # Actions
 
-    function deposit(uint256 assets, address receiver) public override returns (uint256) {
-        return super.deposit(assets, receiver);
+    function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
+        shares = previewDeposit(assets);
+        require(assets <= maxDeposit(receiver), "ERC4626: deposit more than max");
+        _deposit(_msgSender(), receiver, assets, shares);
     }
 
-    function mint(uint256 shares, address receiver) public override returns (uint256) {
-        return super.mint(shares, receiver);
+    function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
+        assets = previewMint(shares);
+        require(shares <= maxMint(receiver), "ERC4626: mint more than max");
+        _deposit(_msgSender(), receiver, assets, shares);
     }
 
     function withdraw(uint256 assets, address receiver, address owner) public override returns (uint256 shares) {
         _claimLoanIfPossible();
-        shares = super.withdraw(assets, receiver, owner);
+        shares = previewWithdraw(assets);
+        require(assets <= maxWithdraw(owner), "ERC4626: withdraw more than max");
+        _withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
     function redeem(uint256 shares, address receiver, address owner) public override returns (uint256 assets) {
         _claimLoanIfPossible();
-        assets = super.redeem(shares, receiver, owner);
-        _redeemCollateralIfPossible(shares, receiver, owner);
+        uint256 collAssets;
+        if (stage() == Stage.ENDING) {
+            // Note: need to calculate collateral assets before calling super.redeem that will burn shares and change totalSupply
+            collAssets = _convertToCollateralAssets(shares, Math.Rounding.Down);
+        }
+
+        assets = previewRedeem(shares);
+        require(shares <= maxRedeem(owner), "ERC4626: redeem more than max");
+        _withdraw(_msgSender(), receiver, owner, assets, shares);
+
+        if (collAssets > 0) {
+            SafeERC20.safeTransfer(IERC20(collateralAddr), receiver, collAssets);
+            emit WithdrawCollateral(msg.sender, receiver, owner, collAssets, shares);
+        }
     }
-
-
-    /*----------------------------------------------------------*|
-    |*  # ERC4626 - INTERNALS                                   *|
-    |*----------------------------------------------------------*/
 
     /** @dev Must not be called when in other than RUNNING stage */
     function _availableLiquidity() internal view returns (uint256) {
         (, PWNInstallmentsLoan.LOAN memory loan) = loanContract.getLOAN(loanId);
-        return IERC20(creditAddr).balanceOf(address(this)) + loan.unclaimedAmount;
+        return IERC20(asset()).balanceOf(address(this)) + loan.unclaimedAmount;
     }
 
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
         super._deposit(caller, receiver, assets, shares);
-        if (aCreditAddr != address(0)) {
-            aave.supply(creditAddr, assets, address(this), 0);
+        if (aAsset != address(0)) {
+            aave.supply(asset(), assets, address(this), 0);
         }
     }
 
     function _withdraw(address caller, address receiver, address owner, uint256 assets, uint256 shares) internal override {
-        if (aCreditAddr != address(0) && stage() == Stage.POOLING) {
-            aave.withdraw(creditAddr, assets, address(this));
+        if (aAsset != address(0) && stage() == Stage.POOLING) {
+            aave.withdraw(asset(), assets, address(this));
         }
         super._withdraw(caller, receiver, owner, assets, shares);
     }
@@ -235,16 +264,6 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
             }
             if (loan.unclaimedAmount > 0 || status == LOANStatus.DEFAULTED) {
                 loanContract.claimLOAN(loanId);
-            }
-        }
-    }
-
-    function _redeemCollateralIfPossible(uint256 shares, address receiver, address owner) internal {
-        if (stage() == Stage.ENDING) {
-            uint256 collAssets = previewCollateralRedeem(shares);
-            if (collAssets > 0) {
-                SafeERC20.safeTransfer(IERC20(collateralAddr), receiver, collAssets);
-                emit WithdrawCollateral(msg.sender, receiver, owner, collAssets, shares);
             }
         }
     }
@@ -266,32 +285,70 @@ contract PWNCrowdsourceLenderVault is ERC4626, IERC721Receiver {
     }
 
     function previewCollateralRedeem(uint256 shares) public view returns (uint256) {
-        require(stage() == Stage.ENDING, "PWNCrowdsourceLenderVault: collateral redeem disabled");
+        Stage _stage = stage();
+        if (_stage == Stage.RUNNING) {
+            (uint8 status, ) = loanContract.getLOAN(loanId);
+            require(status == LOANStatus.DEFAULTED, "PWNCrowdsourceLenderVault: collateral redeem disabled");
+        } else {
+            require(_stage == Stage.ENDING, "PWNCrowdsourceLenderVault: collateral redeem disabled");
+        }
+
         return _convertToCollateralAssets(shares, Math.Rounding.Down);
     }
 
     function _convertToCollateralAssets(uint256 shares, Math.Rounding rounding) internal view virtual returns (uint256) {
-        return shares.mulDiv(totalCollateralAssets() + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
+        uint256 _totalCollateralAssets = totalCollateralAssets();
+        if (_totalCollateralAssets == 0) return 0;
+
+        // Note: increase share decimals if smaller than collateral decimals
+        uint256 decimalAdjustment = 10 ** (collateralDecimals - Math.min(collateralDecimals, decimals()));
+        return (shares * decimalAdjustment).mulDiv(_totalCollateralAssets, totalSupply() * decimalAdjustment, rounding);
     }
 
 
     /*----------------------------------------------------------*|
-    |*  # ERC721 RECEIVER                                       *|
+    |*  # PWN LENDER HOOK                                       *|
     |*----------------------------------------------------------*/
 
-    function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata) external returns (bytes4) {
+    function onLoanCreated(
+        uint256 loanId_,
+        bytes32 proposalHash_,
+        address lender,
+        address creditAddress,
+        uint256 /* creditAmount */,
+        bytes calldata lenderParameters
+    ) external {
         require(msg.sender == address(loanContract));
-        require(operator == address(loanContract));
-        require(from == address(0));
-        require(loanToken.ownerOf(tokenId) == address(this));
+        require(loanToken.ownerOf(loanId_) == address(this));
         require(loanId == 0);
 
-        loanId = tokenId;
-        if (aCreditAddr != address(0)) {
-            aave.withdraw(creditAddr, type(uint256).max, address(this));
-        }
+        require(proposalHash_ == proposalHash);
+        require(lender == address(this));
+        require(creditAddress == asset());
+        require(lenderParameters.length == 0);
 
-        return IERC721Receiver.onERC721Received.selector;
+        loanId = loanId_;
+        if (aAsset != address(0)) {
+            aave.withdraw(asset(), type(uint256).max, address(this));
+        }
+    }
+
+
+    /*----------------------------------------------------------*|
+    |*  # HELPERS                                               *|
+    |*----------------------------------------------------------*/
+
+    function _tryGetAssetDecimals_child(IERC20 asset_) private view returns (bool, uint8) {
+        (bool success, bytes memory encodedDecimals) = address(asset_).staticcall(
+            abi.encodeWithSelector(IERC20Metadata.decimals.selector)
+        );
+        if (success && encodedDecimals.length >= 32) {
+            uint256 returnedDecimals = abi.decode(encodedDecimals, (uint256));
+            if (returnedDecimals <= type(uint8).max) {
+                return (true, uint8(returnedDecimals));
+            }
+        }
+        return (false, 0);
     }
 
 }
