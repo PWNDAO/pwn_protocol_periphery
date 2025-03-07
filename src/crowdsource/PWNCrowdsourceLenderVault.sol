@@ -14,27 +14,77 @@ import { PWNLOAN } from "pwn/loan/token/PWNLOAN.sol";
 import { IAavePoolLike } from "src/interfaces/IAavePoolLike.sol";
 
 
+/**
+ * @title PWNCrowdsourceLenderVault
+ * @notice A vault that pools assets to lend through a PWNInstallmentsLoan contract.
+ */
 contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
     using Math for uint256;
 
+    /**
+     * @notice The Aave lending pool contract.
+     * @dev Aave is used to earn interest on the assets while they are being pooled.
+     */
     IAavePoolLike constant public aave = IAavePoolLike(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
+    /**
+     * @notice The proposal contract that creates the loan proposal.
+     */
     PWNSimpleLoanElasticChainlinkProposal constant public proposalContract = PWNSimpleLoanElasticChainlinkProposal(0xBA58E16BE93dAdcBB74a194bDfD9E5933b24016B);
+    /**
+     * @notice The PWNLOAN token contract.
+     * @dev Is used to check the owner of the loan in the onLoanCreated hook.
+     */
     PWNLOAN constant public loanToken = PWNLOAN(0x4440C069272cC34b80C7B11bEE657D0349Ba9C23);
 
+    /**
+     * @notice The PWNInstallmentsLoan contract through which the loan is created.
+     */
     PWNInstallmentsLoan immutable public loanContract; // = PWNInstallmentsLoan(address(10000000)); // TBD
 
+    /**
+     * @notice The address of the aToken for the asset, if exists.
+     * @dev The aToken is used to earn interest on the assets while they are being pooled.
+     */
     address immutable internal aAsset;
+    /**
+     * @notice The address of the collateral token.
+     */
     address immutable internal collateralAddr;
+    /**
+     * @notice The number of decimals of the collateral token.
+     */
     uint8 immutable internal collateralDecimals;
+    /**
+     * @notice The hash of the loan proposal.
+     * @dev The proposal is made on vault deployment.
+     */
     bytes32 immutable internal proposalHash;
 
+    /**
+     * @notice The ID of the loan funded by the vault.
+     */
     uint256 public loanId;
+
+    /**
+     * @notice Whether the loan has ended.
+     * @dev The loan ends when it is repaid or defaulted.
+     */
     bool internal loanEnded;
 
+    /**
+     * @notice The stages of the vault.
+     * @dev The vault can be in the POOLING, RUNNING, or ENDING stage.
+     * POOLING: The vault is pooling assets. Anyone can freely deposit and withdraw. The vault automatically supplies assets to Aave, if possible.
+     * RUNNING: The vault has funded a loan and is running. No new deposits are allowed. The vault automatically claims repayments on every withdrawal.
+     * ENDING: The funded loan ended. Only redeeming is allowed. The vault automatically claims the remaining loan amount or defaulted collateral.
+     */
     enum Stage {
         POOLING, RUNNING, ENDING
     }
 
+    /**
+     * @notice The terms of the loan proposal.
+     */
     struct Terms {
         address collateralAddress;
         address creditAddress;
@@ -49,6 +99,9 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
         address allowedAcceptor;
     }
 
+    /**
+     * @notice Emitted when collateral is withdrawn.
+     */
     event WithdrawCollateral(
         address indexed sender,
         address indexed receiver,
@@ -115,6 +168,9 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
     }
 
 
+    /**
+     * @notice The stage of the vault.
+     */
     function stage() internal view returns (Stage) {
         if (loanId == 0) {
             return Stage.POOLING;
@@ -129,6 +185,7 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
     |*  # ERC4626                                               *|
     |*----------------------------------------------------------*/
 
+    /** @inheritdoc ERC4626*/
     function totalAssets() public view override returns (uint256) {
         uint256 additionalAssets;
         Stage _stage = stage();
@@ -149,14 +206,17 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
 
     // # Max
 
+    /** @inheritdoc ERC4626*/
     function maxDeposit(address) public view override returns (uint256) {
         return stage() == Stage.POOLING ? type(uint256).max : 0;
     }
 
+    /** @inheritdoc ERC4626*/
     function maxMint(address) public view override returns (uint256) {
         return stage() == Stage.POOLING ? type(uint256).max : 0;
     }
 
+    /** @inheritdoc ERC4626*/
     function maxWithdraw(address owner) public view override returns (uint256 max) {
         Stage _stage = stage();
         if (_stage == Stage.ENDING) {
@@ -169,6 +229,7 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
         }
     }
 
+    /** @inheritdoc ERC4626*/
     function maxRedeem(address owner) public view override returns (uint256 max) {
         max = balanceOf(owner);
         if (stage() == Stage.RUNNING) {
@@ -178,39 +239,46 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
 
     // # Preview
 
+    /** @inheritdoc ERC4626*/
     function previewDeposit(uint256 assets) public view override returns (uint256) {
         require(stage() == Stage.POOLING, "PWNCrowdsourceLenderVault: deposit disabled");
         return _convertToShares(assets, Math.Rounding.Down);
     }
 
+    /** @inheritdoc ERC4626*/
     function previewMint(uint256 shares) public view override returns (uint256) {
         require(stage() == Stage.POOLING, "PWNCrowdsourceLenderVault: mint disabled");
         return _convertToAssets(shares, Math.Rounding.Up);
     }
 
+    /** @inheritdoc ERC4626*/
     function previewWithdraw(uint256 assets) public view override returns (uint256) {
         require(stage() != Stage.ENDING, "PWNCrowdsourceLenderVault: withdraw disabled, use redeem");
         return _convertToShares(assets, Math.Rounding.Up);
     }
 
+    /** @inheritdoc ERC4626*/
     function previewRedeem(uint256 shares) public view override returns (uint256) {
         return _convertToAssets(shares, Math.Rounding.Down);
     }
 
     // # Actions
 
+    /** @inheritdoc ERC4626*/
     function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
         shares = previewDeposit(assets);
         require(assets <= maxDeposit(receiver), "ERC4626: deposit more than max");
         _deposit(_msgSender(), receiver, assets, shares);
     }
 
+    /** @inheritdoc ERC4626*/
     function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
         assets = previewMint(shares);
         require(shares <= maxMint(receiver), "ERC4626: mint more than max");
         _deposit(_msgSender(), receiver, assets, shares);
     }
 
+    /** @inheritdoc ERC4626*/
     function withdraw(uint256 assets, address receiver, address owner) public override returns (uint256 shares) {
         _claimLoanIfPossible();
         shares = previewWithdraw(assets);
@@ -218,11 +286,13 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
         _withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
+    /** @inheritdoc ERC4626*/
     function redeem(uint256 shares, address receiver, address owner) public override returns (uint256 assets) {
         _claimLoanIfPossible();
+
         uint256 collAssets;
         if (stage() == Stage.ENDING) {
-            // Note: need to calculate collateral assets before calling super.redeem that will burn shares and change totalSupply
+            // Note: need to calculate collateral assets before calling _withdraw which burns shares and changes totalSupply
             collAssets = _convertToCollateralAssets(shares, Math.Rounding.Down);
         }
 
@@ -273,6 +343,7 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
     |*  # ERC4626-LIKE COLLATERAL FUNCTIONS                     *|
     |*----------------------------------------------------------*/
 
+    /** @notice ERC4626-like function that returns the total amount of the underlying collateral asset that is “managed” by Vault. */
     function totalCollateralAssets() public view returns (uint256) {
         uint256 additionalCollateralAssets;
         if (stage() == Stage.RUNNING) {
@@ -284,6 +355,10 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
         return IERC20(collateralAddr).balanceOf(address(this)) + additionalCollateralAssets;
     }
 
+    /**
+     * @notice ERC4626-like function that allows an on-chain or off-chain user to simulate the effects
+     * of their collateral redeemption at the current block, given current on-chain conditions.
+     */
     function previewCollateralRedeem(uint256 shares) public view returns (uint256) {
         Stage _stage = stage();
         if (_stage == Stage.RUNNING) {
@@ -310,6 +385,7 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
     |*  # PWN LENDER HOOK                                       *|
     |*----------------------------------------------------------*/
 
+    /** @inheritdoc IPWNLenderHook*/
     function onLoanCreated(
         uint256 loanId_,
         bytes32 proposalHash_,
