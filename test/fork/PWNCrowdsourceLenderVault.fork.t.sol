@@ -52,18 +52,10 @@ contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
             address(deployment.categoryRegistry)
         );
 
-        vm.prank(deployment.protocolTimelock);
-        deployment.chainlinkFeedRegistry.acceptOwnership();
-
-        address[] memory addrs = new address[](3);
-        addrs[0] = address(deployment.simpleLoanElasticChainlinkProposal);
-        addrs[1] = address(deployment.simpleLoanElasticChainlinkProposal);
-        addrs[2] = address(loan);
-
-        bytes32[] memory tags = new bytes32[](3);
-        tags[0] = PWNHubTags.LOAN_PROPOSAL;
-        tags[1] = PWNHubTags.NONCE_MANAGER;
-        tags[2] = PWNHubTags.ACTIVE_LOAN;
+        address[] memory addrs = new address[](1);
+        addrs[0] = address(loan);
+        bytes32[] memory tags = new bytes32[](1);
+        tags[0] = PWNHubTags.ACTIVE_LOAN;
 
         vm.prank(deployment.protocolTimelock);
         deployment.hub.setTags(addrs, tags, true);
@@ -73,7 +65,7 @@ contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
         deployment.chainlinkFeedRegistry.confirmFeed(ETH, USD, 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
         deployment.chainlinkFeedRegistry.proposeFeed(address(USDC), USD, 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6);
         deployment.chainlinkFeedRegistry.confirmFeed(address(USDC), USD, 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6);
-        // Use the same price feed for noAaveToken
+        // Use USDC price feed for noAaveToken
         deployment.chainlinkFeedRegistry.proposeFeed(address(noAaveToken), USD, 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6);
         deployment.chainlinkFeedRegistry.confirmFeed(address(noAaveToken), USD, 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6);
         vm.stopPrank();
@@ -108,6 +100,10 @@ contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
 
 
     function _deployWith(address creditAddress, uint256 decimals) internal {
+        _deployWith(creditAddress, decimals, 36500);
+    }
+
+    function _deployWith(address creditAddress, uint256 decimals, uint24 apr) internal {
         address[] memory intermediaryDenominations = new address[](1);
         intermediaryDenominations[0] = USD;
 
@@ -129,7 +125,7 @@ contract PWNCrowdsourceLenderVaultForkTest is DeploymentTest {
             availableCreditLimit: 0,
             utilizedCreditId: bytes32(0),
             fixedInterestAmount: 0,
-            accruingInterestAPR: 36500,
+            accruingInterestAPR: uint24(apr),
             durationOrDate: 730 days,
             expiration: uint40(block.timestamp + 60 days),
             allowedAcceptor: borrower,
@@ -578,6 +574,151 @@ contract PWNCrowdsourceLenderVault_Ending_ForkTest is PWNCrowdsourceLenderVaultF
         vm.expectRevert();
         vm.prank(lenders[0]);
         lenderVault.mint(1, lenders[0]);
+    }
+
+}
+
+
+contract PWNCrowdsourceLenderVault_FullLifecycle_ForkTest is PWNCrowdsourceLenderVaultForkTest {
+
+    uint256 loanId;
+
+    function setUp() override public virtual {
+        super.setUp();
+
+        _deployWith(address(USDC), 6, 100);
+
+        for (uint256 i; i < lenders.length; ++i) {
+            vm.startPrank(aUSDC);
+            USDC.transfer(lenders[i], initialAmount);
+
+            vm.startPrank(lenders[i]);
+            USDC.approve(address(lenderVault), type(uint256).max);
+            lenderVault.deposit(initialAmount, lenders[i]);
+            vm.stopPrank();
+        }
+
+        vm.prank(aUSDC);
+        USDC.transfer(borrower, 3_000e6); // to cover interest
+    }
+
+    function test_fullLifecycle_whenRepaid() external {
+        // loan starts
+        bytes memory proposalData = deployment.simpleLoanElasticChainlinkProposal.encodeProposalData(proposal, proposalValues);
+        vm.prank(borrower);
+        loanId = loan.createLOAN({
+            proposalSpec: PWNInstallmentsLoan.ProposalSpec({
+                proposalContract: address(deployment.simpleLoanElasticChainlinkProposal),
+                proposalData: proposalData,
+                signature: ""
+            }),
+            lenderSpec: lenderSpec,
+            extra: ""
+        });
+
+        // 3 months postponement
+        vm.warp(block.timestamp + 90 days);
+
+        // start repaying 10k/m
+        uint256 repaidAmount;
+        uint256 i = 1;
+        uint256 debt = loan.loanRepaymentAmount(loanId);
+        while (debt > 0) {
+            vm.prank(borrower);
+            loan.repayLOAN(loanId, debt < 10_000e6 ? debt : 10_000e6);
+            repaidAmount += debt < 10_000e6 ? debt : 10_000e6;
+
+            // every 3 month claim 10k
+            if (i % 3 == 0) {
+                lender = lenders[i / 12];
+                vm.prank(lender);
+                lenderVault.withdraw(10_000e6, lender, lender);
+            }
+
+            vm.warp(block.timestamp + 30 days);
+
+            debt = loan.loanRepaymentAmount(loanId);
+            ++i;
+        }
+
+        uint256 totalLendersBalance;
+        // on repayment, claim by everyone
+        for (uint256 j; j < lenders.length; ++j) {
+            lender = lenders[j];
+            vm.startPrank(lender);
+            lenderVault.redeem(lenderVault.balanceOf(lender), lender, lender);
+            vm.stopPrank();
+
+            totalLendersBalance += USDC.balanceOf(lender);
+        }
+
+        // assert that all assts are claimed
+        assertEq(lenderVault.totalSupply(), 0); // no shares left
+        assertApproxEqAbs(lenderVault.totalAssets(), 0, 2); // no assets left
+        assertApproxEqAbs(lenderVault.totalCollateralAssets(), 0, 2); // no collateral left
+        assertApproxEqAbs(totalLendersBalance, repaidAmount + 20_000e6, 2); // all assets are claimed
+    }
+
+    function test_fullLifecycle_whenDefaulted() external {
+        // loan starts
+        bytes memory proposalData = deployment.simpleLoanElasticChainlinkProposal.encodeProposalData(proposal, proposalValues);
+        vm.prank(borrower);
+        loanId = loan.createLOAN({
+            proposalSpec: PWNInstallmentsLoan.ProposalSpec({
+                proposalContract: address(deployment.simpleLoanElasticChainlinkProposal),
+                proposalData: proposalData,
+                signature: ""
+            }),
+            lenderSpec: lenderSpec,
+            extra: ""
+        });
+
+        // 3 months postponement
+        vm.warp(block.timestamp + 90 days);
+
+        // start repaying 5k/m
+        uint256 repaidAmount;
+        uint256 i = 1;
+        uint256 debt = loan.loanRepaymentAmount(loanId);
+        (uint8 status, PWNInstallmentsLoan.LOAN memory loan_) = loan.getLOAN(loanId);
+        while (debt > 0 && status != 4) {
+            vm.prank(borrower);
+            loan.repayLOAN(loanId, debt < 5_000e6 ? debt : 5_000e6);
+            repaidAmount += debt < 5_000e6 ? debt : 5_000e6;
+
+            // every 3 month claim 10k
+            if (i % 3 == 0) {
+                lender = lenders[i / 12];
+                vm.prank(lender);
+                lenderVault.withdraw(10_000e6, lender, lender);
+            }
+
+            vm.warp(block.timestamp + 30 days);
+
+            debt = loan.loanRepaymentAmount(loanId);
+            (status, ) = loan.getLOAN(loanId);
+            ++i;
+        }
+
+        uint256 totalLendersBalance;
+        uint256 totalLendersCollateralBalance;
+        // on repayment, claim by everyone
+        for (uint256 j; j < lenders.length; ++j) {
+            lender = lenders[j];
+            vm.startPrank(lender);
+            lenderVault.redeem(lenderVault.balanceOf(lender), lender, lender);
+            vm.stopPrank();
+
+            totalLendersBalance += USDC.balanceOf(lender);
+            totalLendersCollateralBalance += WETH.balanceOf(lender);
+        }
+
+        // assert that all assts are claimed
+        assertEq(lenderVault.totalSupply(), 0); // no shares left
+        assertApproxEqAbs(lenderVault.totalAssets(), 0, 2); // no assets left
+        assertApproxEqAbs(lenderVault.totalCollateralAssets(), 0, 2); // no collateral left
+        assertApproxEqAbs(totalLendersBalance, repaidAmount + 20_000e6, 2); // all assets are claimed
+        assertApproxEqAbs(totalLendersCollateralBalance, loan_.collateral.amount, 2); // collateral is claimed
     }
 
 }
