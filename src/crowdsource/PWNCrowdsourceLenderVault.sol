@@ -375,6 +375,9 @@ contract PWNCrowdsourceLenderVault is ERC4626, IPWNLenderHook {
         uint256 _totalCollateralAssets = totalCollateralAssets();
         if (_totalCollateralAssets == 0) return 0;
 
+        uint256 _totalSupply = totalSupply();
+        if (_totalSupply == 0) return 0;
+
         // Note: increase share decimals if smaller than collateral decimals
         uint256 decimalAdjustment = 10 ** (collateralDecimals - Math.min(collateralDecimals, decimals()));
         return (shares * decimalAdjustment).mulDiv(_totalCollateralAssets, totalSupply() * decimalAdjustment, rounding);
