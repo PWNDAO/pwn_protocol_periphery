@@ -61,9 +61,6 @@ contract WorldIdAcceptorController is IPWNAcceptorController {
     }
 
 
-    /// @param _worldId: 0x17B354dD2595411ff79041f930e491A4Df39A278 (WorldChain)
-    /// @param _appId: app_17abe44eaf47c99566f5378aa4e19463
-    /// @param _actionId: verify-humanness
     constructor(IWorldID _worldId, string memory _appId, string memory _actionId) {
         worldId = _worldId;
         externalNullifier = _hashToField(abi.encodePacked(_hashToField(abi.encodePacked(_appId)), _actionId));
