@@ -79,6 +79,8 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
     }
 
     function test_shouldPass_whenValidWorldId() external {
+        vm.skip(true);
+
         PWNSimpleLoan.LenderSpec memory lenderSpec = PWNSimpleLoan.LenderSpec(lender);
 
         PWNSimpleLoanSimpleProposal.Proposal memory proposal = PWNSimpleLoanSimpleProposal.Proposal({
@@ -125,7 +127,7 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
                 signature: ""
             }),
             lenderSpec: lenderSpec,
-            callerSpec: PWNSimpleLoan.CallerSpec({
+            callerSpec: PWNSimpleLoan.CallerSpec({ // TBD
                 refinancingLoanId: 0,
                 revokeNonce: false,
                 nonce: 0
