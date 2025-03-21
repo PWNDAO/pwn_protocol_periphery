@@ -1,3 +1,3 @@
-[submodule "lib/pwn_contracts"]
-	path = lib/pwn_contracts
-	url = https://github.com/PWNFinance/pwn_contracts
+[submodule "lib/pwn_protocol"]
+	path = lib/pwn_protocol
+	url = https://github.com/PWNDAO/pwn_protocol
