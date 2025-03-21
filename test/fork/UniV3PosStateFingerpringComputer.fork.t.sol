@@ -11,7 +11,7 @@ import {
     UseCasesTest,
     MultiToken,
     IERC721
-} from "pwn_contracts/test/fork/UseCases.fork.t.sol";
+} from "pwn_protocol/test/fork/UseCases.fork.t.sol";
 
 
 interface UniV3PostLike {
@@ -46,7 +46,7 @@ contract UniV3PosStateFingerprintComputerForkTest is UseCasesTest {
     UniV3PosStateFingerpringComputer computer;
 
     constructor() {
-        deploymentsSubpath = "/lib/pwn_contracts";
+        deploymentsSubpath = "/lib/pwn_protocol";
     }
 
     function setUp() override public {

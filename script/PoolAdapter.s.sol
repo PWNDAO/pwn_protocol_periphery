@@ -29,7 +29,7 @@ contract Deploy is Deployments, Script {
     using GnosisSafeUtils for GnosisSafeLike;
 
     constructor() {
-        deploymentsSubpath = "/lib/pwn_contracts";
+        deploymentsSubpath = "/lib/pwn_protocol";
     }
 
     function _protocolNotDeployedOnSelectedChain() internal pure override {
@@ -106,7 +106,7 @@ contract Setup is Deployments, Script {
     using TimelockUtils for TimelockController;
 
     constructor() {
-        deploymentsSubpath = "/lib/pwn_contracts";
+        deploymentsSubpath = "/lib/pwn_protocol";
     }
 
     function _protocolNotDeployedOnSelectedChain() internal pure override {

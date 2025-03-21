@@ -4,8 +4,8 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 fs_permissions = [
-    { access = "read", path = "./lib/pwn_contracts/deployments/latest.json"},
-    { access = "read", path = "./lib/pwn_contracts/deployments/external/external.json"}
+    { access = "read", path = "./lib/pwn_protocol/deployments/v1.4.json"},
+    { access = "read", path = "./lib/pwn_protocol/deployments/external/external.json"}
 ]
 
 

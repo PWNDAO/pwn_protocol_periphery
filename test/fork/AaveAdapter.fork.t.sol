@@ -10,12 +10,12 @@ import { PWNHubTags } from "pwn/hub/PWNHubTags.sol";
 import { PWNSimpleLoan } from "pwn/loan/terms/simple/loan/PWNSimpleLoan.sol";
 import { PWNSimpleLoanSimpleProposal } from "pwn/loan/terms/simple/proposal/PWNSimpleLoanSimpleProposal.sol";
 
-import { T20 } from "pwn_contracts/test/helper/T20.sol";
+import { T20 } from "pwn_protocol/test/helper/T20.sol";
 import {
     UseCasesTest,
     MultiToken,
     IERC20
-} from "pwn_contracts/test/fork/UseCases.fork.t.sol";
+} from "pwn_protocol/test/fork/UseCases.fork.t.sol";
 
 
 contract AaveAdapterForkTest is UseCasesTest {
@@ -29,7 +29,7 @@ contract AaveAdapterForkTest is UseCasesTest {
     AaveAdapter adapter;
 
     constructor() {
-        deploymentsSubpath = "/lib/pwn_contracts";
+        deploymentsSubpath = "/lib/pwn_protocol";
     }
 
     function setUp() override public {

@@ -16,7 +16,7 @@ import {
     DeploymentTest,
     PWNSimpleLoan,
     PWNSimpleLoanSimpleProposal
-} from "pwn_contracts/test/DeploymentTest.t.sol";
+} from "pwn_protocol/test/DeploymentTest.t.sol";
 
 
 contract WorldIdAcceptorControllerForkTest is DeploymentTest {
@@ -25,14 +25,14 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
     address constant uniWLD = 0x610E319b3A3Ab56A0eD5562927D37c233774ba39;
 
     IWorldID constant worldId = IWorldID(0x17B354dD2595411ff79041f930e491A4Df39A278);
-    string constant appId = "app_17abe44eaf47c99566f5378aa4e19463";
-    string constant actionId = "verify-humanness";
+    string constant appId = "app_9b6d733aa881b7be963557bef509cd17"; // "app_17abe44eaf47c99566f5378aa4e19463";
+    string constant actionId = "supply"; // "verify-humanness";
 
     WorldIdAcceptorController controller;
     WorldIdAcceptorController.AcceptorData acceptorData;
 
     constructor() {
-        deploymentsSubpath = "/lib/pwn_contracts";
+        deploymentsSubpath = "/lib/pwn_protocol";
     }
 
     function setUp() override public {
@@ -58,11 +58,12 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
         deployment.hub.setTags(addresses, tags, true);
         // < Prepare protocol
 
+        borrower = 0x0a1b2c3d4E5f67890123456789Abcdef01234567;
         controller = new WorldIdAcceptorController(worldId, appId, actionId);
         acceptorData = WorldIdAcceptorController.AcceptorData({ // test verification data
-            root: 0,
-            nullifierHash: 1,
-            proof: [uint256(2), 3, 4, 5, 6, 7, 8, 9]
+            root: 0x28cce7a33cd773f2fd5eedb1c0492fd837d91514b284bfdee8ea1a31e1fbb24b,
+            nullifierHash: 0x02cc618bed55921ea5ed3840edecda4b7ac8fb4e4d64deb5f009673cb1bde146,
+            proof: [uint256(0x1fca9c3abde1719295742e8aec441113fbff58812b8e463cb40e5c7bc7a43f4c), 0x24974b237be75b67dd6297d78157ef42357e02e01cbb1738a82029d0d63df673, 0x2cb84acb3f8185b758092c1cf7e5bdc9400aeeb511eb11b6a74d9495448a7878, 0x19eb7725b13da035f281df19c4ed7f1376407ceed07a2d502be06fe94c0b5755, 0x2abe6b048bfff0a6787ec48e39a69d600b24e1b6f68b1f1ad8f45adddb46dbf8, 0x2703207f99039bdb7347eba0af4b8b26d7bcb7f2bee32960d7f1c33c79612587, 0x185bf8eb073bf44c70969b9336d88edf677ac47643358fca6d0f6e57777d5226, 0x054e72291058a37728bd0b3407d56cfa82d4200af885f8740e8451c548d46f64]
         });
 
         vm.startPrank(uniWLD);
@@ -79,8 +80,6 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
     }
 
     function test_shouldPass_whenValidWorldId() external {
-        vm.skip(true);
-
         PWNSimpleLoan.LenderSpec memory lenderSpec = PWNSimpleLoan.LenderSpec(lender);
 
         PWNSimpleLoanSimpleProposal.Proposal memory proposal = PWNSimpleLoanSimpleProposal.Proposal({
@@ -127,7 +126,7 @@ contract WorldIdAcceptorControllerForkTest is DeploymentTest {
                 signature: ""
             }),
             lenderSpec: lenderSpec,
-            callerSpec: PWNSimpleLoan.CallerSpec({ // TBD
+            callerSpec: PWNSimpleLoan.CallerSpec({
                 refinancingLoanId: 0,
                 revokeNonce: false,
                 nonce: 0
