@@ -19,11 +19,11 @@ import {
 
 contract AaveAdapterForkTest is UseCasesTest {
 
-    address constant AAVE_POOL = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
-    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address constant aUSDC = 0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c;
+    address constant AAVE = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
+    address constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    address constant aDAI = 0x018008bfb33d285247A21d44E50697654f754e63;
 
-    uint256 initialAmount = 1000e6;
+    uint256 initialAmount = 1000e18;
 
     AaveAdapter adapter;
 
@@ -36,37 +36,36 @@ contract AaveAdapterForkTest is UseCasesTest {
 
         adapter = new AaveAdapter(address(__d.hub));
         vm.prank(__d.config.owner());
-        __d.config.registerPoolAdapter(AAVE_POOL, address(adapter));
+        __d.config.registerPoolAdapter(AAVE, address(adapter));
 
-        vm.prank(aUSDC);
-        IERC20(USDC).transfer(lender, initialAmount);
+        deal(DAI, lender, initialAmount);
 
-        // Supply to pool 1k USDC
+        // Supply to pool 1k DAI
         vm.startPrank(lender);
-        IERC20(USDC).approve(AAVE_POOL, type(uint256).max);
-        IAavePoolLike(AAVE_POOL).supply(USDC, initialAmount, lender, 0);
-        IERC20(aUSDC).approve(address(adapter), type(uint256).max);
-        IERC20(USDC).approve(address(__d.simpleLoan), type(uint256).max);
+        IERC20(DAI).approve(AAVE, type(uint256).max);
+        IAavePoolLike(AAVE).supply(DAI, initialAmount, lender, 0);
+        IERC20(aDAI).approve(address(adapter), type(uint256).max);
+        IERC20(DAI).approve(address(__d.simpleLoan), type(uint256).max);
         vm.stopPrank();
 
         vm.prank(borrower);
-        IERC20(USDC).approve(address(__d.simpleLoan), type(uint256).max);
+        IERC20(DAI).approve(address(__d.simpleLoan), type(uint256).max);
     }
 
     function test_shouldWithdrawAndRepayToPool() external {
         // Update lender spec
         PWNSimpleLoan.LenderSpec memory lenderSpec = PWNSimpleLoan.LenderSpec({
-            sourceOfFunds: AAVE_POOL
+            sourceOfFunds: AAVE
         });
 
         // Update proposal
-        proposal.creditAddress = USDC;
-        proposal.creditAmount = 100e6; // 100 USDC
+        proposal.creditAddress = DAI;
+        proposal.creditAmount = 100e18; // 100 DAI
         proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
-        assertApproxEqAbs(IERC20(aUSDC).balanceOf(lender), initialAmount, 1);
-        assertEq(IERC20(USDC).balanceOf(lender), 0);
-        assertEq(IERC20(USDC).balanceOf(borrower), 0);
+        assertApproxEqAbs(IERC20(aDAI).balanceOf(lender), initialAmount, 1);
+        assertEq(IERC20(DAI).balanceOf(lender), 0);
+        assertEq(IERC20(DAI).balanceOf(borrower), 0);
 
         // Make proposal
         vm.prank(lender);
@@ -93,9 +92,9 @@ contract AaveAdapterForkTest is UseCasesTest {
         });
 
         // Check balance
-        assertApproxEqAbs(IERC20(aUSDC).balanceOf(lender), initialAmount - proposal.creditAmount, 1);
-        assertEq(IERC20(USDC).balanceOf(lender), 0);
-        assertEq(IERC20(USDC).balanceOf(borrower), proposal.creditAmount);
+        assertApproxEqAbs(IERC20(aDAI).balanceOf(lender), initialAmount - proposal.creditAmount, 1);
+        assertEq(IERC20(DAI).balanceOf(lender), 0);
+        assertEq(IERC20(DAI).balanceOf(borrower), proposal.creditAmount);
 
         // Move in time
         vm.warp(block.timestamp + 20 hours);
@@ -105,9 +104,9 @@ contract AaveAdapterForkTest is UseCasesTest {
         __d.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is original lender -> repay funds to the pool
-        assertGe(IERC20(aUSDC).balanceOf(lender), initialAmount); // greater than or equal because pool may have accrued interest
-        assertEq(IERC20(USDC).balanceOf(lender), 0);
-        assertEq(IERC20(USDC).balanceOf(borrower), 0);
+        assertGe(IERC20(aDAI).balanceOf(lender), initialAmount); // greater than or equal because pool may have accrued interest
+        assertEq(IERC20(DAI).balanceOf(lender), 0);
+        assertEq(IERC20(DAI).balanceOf(borrower), 0);
         vm.expectRevert("ERC721: invalid token ID");
         __d.loanToken.ownerOf(loanId);
     }
@@ -115,17 +114,17 @@ contract AaveAdapterForkTest is UseCasesTest {
     function test_shouldWithdrawFromPoolAndRepayToVault() external {
         // Update lender spec
         PWNSimpleLoan.LenderSpec memory lenderSpec = PWNSimpleLoan.LenderSpec({
-            sourceOfFunds: AAVE_POOL
+            sourceOfFunds: AAVE
         });
 
         // Update proposal
-        proposal.creditAddress = USDC;
-        proposal.creditAmount = 100e6; // 100 USDC
+        proposal.creditAddress = DAI;
+        proposal.creditAmount = 100e18; // 100 DAI
         proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
-        assertApproxEqAbs(IERC20(aUSDC).balanceOf(lender), 1000e6, 1);
-        assertEq(IERC20(USDC).balanceOf(lender), 0);
-        assertEq(IERC20(USDC).balanceOf(borrower), 0);
+        assertApproxEqAbs(IERC20(aDAI).balanceOf(lender), 1000e18, 1);
+        assertEq(IERC20(DAI).balanceOf(lender), 0);
+        assertEq(IERC20(DAI).balanceOf(borrower), 0);
 
         // Make proposal
         vm.prank(lender);
@@ -152,9 +151,9 @@ contract AaveAdapterForkTest is UseCasesTest {
         });
 
         // Check balance
-        assertApproxEqAbs(IERC20(aUSDC).balanceOf(lender), 900e6, 1);
-        assertEq(IERC20(USDC).balanceOf(lender), 0);
-        assertEq(IERC20(USDC).balanceOf(borrower), 100e6);
+        assertApproxEqAbs(IERC20(aDAI).balanceOf(lender), 900e18, 1);
+        assertEq(IERC20(DAI).balanceOf(lender), 0);
+        assertEq(IERC20(DAI).balanceOf(borrower), 100e18);
 
         // Move in time
         vm.warp(block.timestamp + 20 hours);
@@ -164,35 +163,35 @@ contract AaveAdapterForkTest is UseCasesTest {
         vm.prank(lender);
         __d.loanToken.transferFrom(lender, newLender, loanId);
 
-        uint256 originalBalance = IERC20(USDC).balanceOf(address(__d.simpleLoan));
+        uint256 originalBalance = IERC20(DAI).balanceOf(address(__d.simpleLoan));
 
         // Repay loan
         vm.prank(borrower);
         __d.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is not original lender -> repay funds to the Vault
-        assertGe(IERC20(aUSDC).balanceOf(lender), 900e6);
-        assertEq(IERC20(USDC).balanceOf(address(__d.simpleLoan)), originalBalance + 100e6);
+        assertGe(IERC20(aDAI).balanceOf(lender), 900e18);
+        assertEq(IERC20(DAI).balanceOf(address(__d.simpleLoan)), originalBalance + 100e18);
         assertEq(__d.loanToken.ownerOf(loanId), newLender);
     }
 
     // This fuzz test fails randomly. Use the failed credit amount directly and the test will pass.
     function testFuzz_shouldWithdrawAnyAmount(uint256 creditAmount) external {
-        creditAmount = bound(creditAmount, 1, initialAmount);
+        creditAmount = bound(creditAmount, 1, initialAmount / 1e18) * 1e18;
 
-        vm.warp(block.timestamp + 1 minutes);
+        vm.warp(block.timestamp + 10);
 
         // Update lender spec
         PWNSimpleLoan.LenderSpec memory lenderSpec = PWNSimpleLoan.LenderSpec({
-            sourceOfFunds: AAVE_POOL
+            sourceOfFunds: AAVE
         });
 
         // Update proposal
-        proposal.creditAddress = USDC;
+        proposal.creditAddress = DAI;
         proposal.creditAmount = creditAmount;
         proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
-        assertEq(IERC20(USDC).balanceOf(borrower), 0);
+        assertEq(IERC20(DAI).balanceOf(borrower), 0);
 
         // Make proposal
         vm.prank(lender);
@@ -219,7 +218,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         });
 
         // Check balance
-        assertEq(IERC20(USDC).balanceOf(borrower), creditAmount);
+        assertEq(IERC20(DAI).balanceOf(borrower), creditAmount);
     }
 
     function test_shouldFail_whenPostWithdrawHFUnderMin() external {
@@ -229,16 +228,16 @@ contract AaveAdapterForkTest is UseCasesTest {
 
         // Create some debt
         vm.prank(lender);
-        IAavePoolLike(AAVE_POOL).borrow(USDC, 500e6, 2, 0, lender);
+        IAavePoolLike(AAVE).borrow(DAI, 500e18, 2, 0, lender);
 
         // Update lender spec
         PWNSimpleLoan.LenderSpec memory lenderSpec = PWNSimpleLoan.LenderSpec({
-            sourceOfFunds: AAVE_POOL
+            sourceOfFunds: AAVE
         });
 
         // Update proposal
-        proposal.creditAddress = USDC;
-        proposal.creditAmount = 100e6; // 100 USDC
+        proposal.creditAddress = DAI;
+        proposal.creditAmount = 100e18; // 100 DAI
         proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
         // Make proposal
