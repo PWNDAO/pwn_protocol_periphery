@@ -51,8 +51,8 @@ contract UniV3PosStateFingerprintComputerForkTest is UseCasesTest {
         super.setUp();
 
         computer = new UniV3PosStateFingerpringComputer(UNI_V3_POS);
-        vm.prank(deployment.config.owner());
-        deployment.config.registerStateFingerprintComputer(UNI_V3_POS, address(computer));
+        vm.prank(__d.config.owner());
+        __d.config.registerStateFingerprintComputer(UNI_V3_POS, address(computer));
 
         collId = 1;
         address originalOwner = IERC721(UNI_V3_POS).ownerOf(collId);
@@ -60,7 +60,7 @@ contract UniV3PosStateFingerprintComputerForkTest is UseCasesTest {
         IERC721(UNI_V3_POS).transferFrom(originalOwner, borrower, collId);
 
         vm.prank(borrower);
-        IERC721(UNI_V3_POS).setApprovalForAll(address(deployment.simpleLoan), true);
+        IERC721(UNI_V3_POS).setApprovalForAll(address(__d.simpleLoan), true);
     }
 
     function test_shouldFail_whenUniV3PosStateChanges() external {
@@ -107,7 +107,7 @@ contract UniV3PosStateFingerprintComputerForkTest is UseCasesTest {
         _createLoan();
 
         // Check balance
-        assertEq(IERC721(UNI_V3_POS).ownerOf(collId), address(deployment.simpleLoan));
+        assertEq(IERC721(UNI_V3_POS).ownerOf(collId), address(__d.simpleLoan));
     }
 
 }

@@ -34,9 +34,9 @@ contract AaveAdapterForkTest is UseCasesTest {
     function setUp() override public {
         super.setUp();
 
-        adapter = new AaveAdapter(address(deployment.hub));
-        vm.prank(deployment.config.owner());
-        deployment.config.registerPoolAdapter(AAVE_POOL, address(adapter));
+        adapter = new AaveAdapter(address(__d.hub));
+        vm.prank(__d.config.owner());
+        __d.config.registerPoolAdapter(AAVE_POOL, address(adapter));
 
         vm.prank(aUSDC);
         IERC20(USDC).transfer(lender, initialAmount);
@@ -46,11 +46,11 @@ contract AaveAdapterForkTest is UseCasesTest {
         IERC20(USDC).approve(AAVE_POOL, type(uint256).max);
         IAavePoolLike(AAVE_POOL).supply(USDC, initialAmount, lender, 0);
         IERC20(aUSDC).approve(address(adapter), type(uint256).max);
-        IERC20(USDC).approve(address(deployment.simpleLoan), type(uint256).max);
+        IERC20(USDC).approve(address(__d.simpleLoan), type(uint256).max);
         vm.stopPrank();
 
         vm.prank(borrower);
-        IERC20(USDC).approve(address(deployment.simpleLoan), type(uint256).max);
+        IERC20(USDC).approve(address(__d.simpleLoan), type(uint256).max);
     }
 
     function test_shouldWithdrawAndRepayToPool() external {
@@ -62,7 +62,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         // Update proposal
         proposal.creditAddress = USDC;
         proposal.creditAmount = 100e6; // 100 USDC
-        proposal.proposerSpecHash = deployment.simpleLoan.getLenderSpecHash(lenderSpec);
+        proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
         assertApproxEqAbs(IERC20(aUSDC).balanceOf(lender), initialAmount, 1);
         assertEq(IERC20(USDC).balanceOf(lender), 0);
@@ -70,15 +70,15 @@ contract AaveAdapterForkTest is UseCasesTest {
 
         // Make proposal
         vm.prank(lender);
-        deployment.simpleLoanSimpleProposal.makeProposal(proposal);
+        __d.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = __d.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
-        uint256 loanId = deployment.simpleLoan.createLOAN({
+        uint256 loanId = __d.simpleLoan.createLOAN({
             proposalSpec: PWNSimpleLoan.ProposalSpec({
-                proposalContract: address(deployment.simpleLoanSimpleProposal),
+                proposalContract: address(__d.simpleLoanSimpleProposal),
                 proposalData: proposalData,
                 proposalInclusionProof: new bytes32[](0),
                 signature: ""
@@ -102,14 +102,14 @@ contract AaveAdapterForkTest is UseCasesTest {
 
         // Repay loan
         vm.prank(borrower);
-        deployment.simpleLoan.repayLOAN(loanId);
+        __d.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is original lender -> repay funds to the pool
         assertGe(IERC20(aUSDC).balanceOf(lender), initialAmount); // greater than or equal because pool may have accrued interest
         assertEq(IERC20(USDC).balanceOf(lender), 0);
         assertEq(IERC20(USDC).balanceOf(borrower), 0);
         vm.expectRevert("ERC721: invalid token ID");
-        deployment.loanToken.ownerOf(loanId);
+        __d.loanToken.ownerOf(loanId);
     }
 
     function test_shouldWithdrawFromPoolAndRepayToVault() external {
@@ -121,7 +121,7 @@ contract AaveAdapterForkTest is UseCasesTest {
         // Update proposal
         proposal.creditAddress = USDC;
         proposal.creditAmount = 100e6; // 100 USDC
-        proposal.proposerSpecHash = deployment.simpleLoan.getLenderSpecHash(lenderSpec);
+        proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
         assertApproxEqAbs(IERC20(aUSDC).balanceOf(lender), 1000e6, 1);
         assertEq(IERC20(USDC).balanceOf(lender), 0);
@@ -129,15 +129,15 @@ contract AaveAdapterForkTest is UseCasesTest {
 
         // Make proposal
         vm.prank(lender);
-        deployment.simpleLoanSimpleProposal.makeProposal(proposal);
+        __d.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = __d.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
-        uint256 loanId = deployment.simpleLoan.createLOAN({
+        uint256 loanId = __d.simpleLoan.createLOAN({
             proposalSpec: PWNSimpleLoan.ProposalSpec({
-                proposalContract: address(deployment.simpleLoanSimpleProposal),
+                proposalContract: address(__d.simpleLoanSimpleProposal),
                 proposalData: proposalData,
                 proposalInclusionProof: new bytes32[](0),
                 signature: ""
@@ -162,18 +162,18 @@ contract AaveAdapterForkTest is UseCasesTest {
         address newLender = makeAddr("new lender");
 
         vm.prank(lender);
-        deployment.loanToken.transferFrom(lender, newLender, loanId);
+        __d.loanToken.transferFrom(lender, newLender, loanId);
 
-        uint256 originalBalance = IERC20(USDC).balanceOf(address(deployment.simpleLoan));
+        uint256 originalBalance = IERC20(USDC).balanceOf(address(__d.simpleLoan));
 
         // Repay loan
         vm.prank(borrower);
-        deployment.simpleLoan.repayLOAN(loanId);
+        __d.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is not original lender -> repay funds to the Vault
         assertGe(IERC20(aUSDC).balanceOf(lender), 900e6);
-        assertEq(IERC20(USDC).balanceOf(address(deployment.simpleLoan)), originalBalance + 100e6);
-        assertEq(deployment.loanToken.ownerOf(loanId), newLender);
+        assertEq(IERC20(USDC).balanceOf(address(__d.simpleLoan)), originalBalance + 100e6);
+        assertEq(__d.loanToken.ownerOf(loanId), newLender);
     }
 
     // This fuzz test fails randomly. Use the failed credit amount directly and the test will pass.
@@ -190,21 +190,21 @@ contract AaveAdapterForkTest is UseCasesTest {
         // Update proposal
         proposal.creditAddress = USDC;
         proposal.creditAmount = creditAmount;
-        proposal.proposerSpecHash = deployment.simpleLoan.getLenderSpecHash(lenderSpec);
+        proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
         assertEq(IERC20(USDC).balanceOf(borrower), 0);
 
         // Make proposal
         vm.prank(lender);
-        deployment.simpleLoanSimpleProposal.makeProposal(proposal);
+        __d.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = __d.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
-        deployment.simpleLoan.createLOAN({
+        __d.simpleLoan.createLOAN({
             proposalSpec: PWNSimpleLoan.ProposalSpec({
-                proposalContract: address(deployment.simpleLoanSimpleProposal),
+                proposalContract: address(__d.simpleLoanSimpleProposal),
                 proposalData: proposalData,
                 proposalInclusionProof: new bytes32[](0),
                 signature: ""
@@ -239,20 +239,20 @@ contract AaveAdapterForkTest is UseCasesTest {
         // Update proposal
         proposal.creditAddress = USDC;
         proposal.creditAmount = 100e6; // 100 USDC
-        proposal.proposerSpecHash = deployment.simpleLoan.getLenderSpecHash(lenderSpec);
+        proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
         // Make proposal
         vm.prank(lender);
-        deployment.simpleLoanSimpleProposal.makeProposal(proposal);
+        __d.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = __d.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Try to create loan
         vm.expectRevert();
         vm.prank(borrower);
-        deployment.simpleLoan.createLOAN({
+        __d.simpleLoan.createLOAN({
             proposalSpec: PWNSimpleLoan.ProposalSpec({
-                proposalContract: address(deployment.simpleLoanSimpleProposal),
+                proposalContract: address(__d.simpleLoanSimpleProposal),
                 proposalData: proposalData,
                 proposalInclusionProof: new bytes32[](0),
                 signature: ""

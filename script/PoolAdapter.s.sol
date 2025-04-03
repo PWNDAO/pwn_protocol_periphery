@@ -40,14 +40,14 @@ contract Deploy is Deployments, Script {
         bytes32 salt,
         bytes memory bytecode
     ) internal returns (address) {
-        bool success = GnosisSafeLike(deployment.deployerSafe).execTransaction({
-            to: address(deployment.deployer),
+        bool success = GnosisSafeLike(__e.deployerSafe).execTransaction({
+            to: address(__e.deployer),
             data: abi.encodeWithSelector(
                 IPWNDeployer.deploy.selector, salt, bytecode
             )
         });
         require(success, "Deploy failed");
-        return deployment.deployer.computeAddress(salt, keccak256(bytecode));
+        return __e.deployer.computeAddress(salt, keccak256(bytecode));
     }
 
 
@@ -65,16 +65,16 @@ forge script script/PoolAdapter.s.sol:Deploy \
     function deployPoolAdapters() public {
         _loadDeployedAddresses();
 
-        require(address(deployment.deployer) != address(0), "Deployer not set");
-        require(deployment.deployerSafe != address(0), "Deployer safe not set");
-        require(address(deployment.hub) != address(0), "Hub not set");
+        require(__e.deployerSafe != address(0), "Deployer safe not set");
+        require(address(__e.deployer) != address(0), "Deployer not set");
+        require(address(__d.hub) != address(0), "Hub not set");
 
         vm.startBroadcast();
 
         address aaveAdapter = _deploy(
             PWNDeployerSalt.AAVE,
             abi.encodePacked(
-                type(AaveAdapter).creationCode, abi.encode(address(deployment.hub))
+                type(AaveAdapter).creationCode, abi.encode(address(__d.hub))
             )
         );
         console2.log("AaveAdapter:", aaveAdapter);
@@ -82,7 +82,7 @@ forge script script/PoolAdapter.s.sol:Deploy \
         address compoundAdapter = _deploy(
             PWNDeployerSalt.COMPOUND,
             abi.encodePacked(
-                type(CompoundAdapter).creationCode, abi.encode(deployment.hub)
+                type(CompoundAdapter).creationCode, abi.encode(__d.hub)
             )
         );
         console2.log("CompoundAdapter:", compoundAdapter);
@@ -90,7 +90,7 @@ forge script script/PoolAdapter.s.sol:Deploy \
         address erc4626VaultAdapter = _deploy(
             PWNDeployerSalt.ERC4626_VAULT,
             abi.encodePacked(
-                type(ERC4626Adapter).creationCode, abi.encode(deployment.hub)
+                type(ERC4626Adapter).creationCode, abi.encode(__d.hub)
             )
         );
         console2.log("ERC4626Adapter:", erc4626VaultAdapter);
@@ -127,9 +127,9 @@ forge script script/PoolAdapter.s.sol:Setup \
     function registerAdapters() external {
         _loadDeployedAddresses();
 
-        require(deployment.daoSafe != address(0), "DAO Safe not set");
-        require(deployment.protocolTimelock != address(0), "Protocol timelock not set");
-        require(address(deployment.config) != address(0), "Config not set");
+        require(__e.daoSafe != address(0), "DAO Safe not set");
+        require(__e.protocolTimelock != address(0), "Protocol timelock not set");
+        require(address(__d.config) != address(0), "Config not set");
 
         vm.startBroadcast();
 
@@ -143,9 +143,9 @@ forge script script/PoolAdapter.s.sol:Setup \
         adapters[2] = 0x1bD2794d545B488d5Cf848912af38b5283d101b7; // Aave
 
         for (uint256 i; i < pools.length; ++i) {
-            TimelockController(payable(deployment.protocolTimelock)).scheduleAndExecute(
-                GnosisSafeLike(deployment.daoSafe),
-                address(deployment.config),
+            TimelockController(payable(__e.protocolTimelock)).scheduleAndExecute(
+                GnosisSafeLike(__e.daoSafe),
+                address(__d.config),
                 abi.encodeWithSignature("registerPoolAdapter(address,address)", pools[i], adapters[i])
             );
             console2.log("Register pool adapter tx succeeded", pools[i], adapters[i]);

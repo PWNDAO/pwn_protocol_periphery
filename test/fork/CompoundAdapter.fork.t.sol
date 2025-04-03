@@ -33,9 +33,9 @@ contract CompoundAdapterForkTest is UseCasesTest {
     function setUp() override public {
         super.setUp();
 
-        adapter = new CompoundAdapter(address(deployment.hub));
-        vm.prank(deployment.config.owner());
-        deployment.config.registerPoolAdapter(CMP_USDC, address(adapter));
+        adapter = new CompoundAdapter(address(__d.hub));
+        vm.prank(__d.config.owner());
+        __d.config.registerPoolAdapter(CMP_USDC, address(adapter));
 
         vm.prank(0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503);
         IERC20(USDC).transfer(lender, initialAmount);
@@ -45,11 +45,11 @@ contract CompoundAdapterForkTest is UseCasesTest {
         IERC20(USDC).approve(CMP_USDC, type(uint256).max);
         ICometLike(CMP_USDC).supply(USDC, initialAmount);
         ICometLike(CMP_USDC).allow(address(adapter), true);
-        IERC20(USDC).approve(address(deployment.simpleLoan), type(uint256).max);
+        IERC20(USDC).approve(address(__d.simpleLoan), type(uint256).max);
         vm.stopPrank();
 
         vm.prank(borrower);
-        IERC20(USDC).approve(address(deployment.simpleLoan), type(uint256).max);
+        IERC20(USDC).approve(address(__d.simpleLoan), type(uint256).max);
     }
 
     function test_shouldWithdrawAndRepayToPool() external {
@@ -61,22 +61,22 @@ contract CompoundAdapterForkTest is UseCasesTest {
         // Update proposal
         proposal.creditAddress = USDC;
         proposal.creditAmount = 100e6; // 100 USDC
-        proposal.proposerSpecHash = deployment.simpleLoan.getLenderSpecHash(lenderSpec);
+        proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
         assertEq(IERC20(USDC).balanceOf(lender), 0);
         assertEq(IERC20(USDC).balanceOf(borrower), 0);
 
         // Make proposal
         vm.prank(lender);
-        deployment.simpleLoanSimpleProposal.makeProposal(proposal);
+        __d.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = __d.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
-        uint256 loanId = deployment.simpleLoan.createLOAN({
+        uint256 loanId = __d.simpleLoan.createLOAN({
             proposalSpec: PWNSimpleLoan.ProposalSpec({
-                proposalContract: address(deployment.simpleLoanSimpleProposal),
+                proposalContract: address(__d.simpleLoanSimpleProposal),
                 proposalData: proposalData,
                 proposalInclusionProof: new bytes32[](0),
                 signature: ""
@@ -99,13 +99,13 @@ contract CompoundAdapterForkTest is UseCasesTest {
 
         // Repay loan
         vm.prank(borrower);
-        deployment.simpleLoan.repayLOAN(loanId);
+        __d.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is original lender -> repay funds to the pool
         assertEq(IERC20(USDC).balanceOf(lender), 0);
         assertEq(IERC20(USDC).balanceOf(borrower), 0);
         vm.expectRevert("ERC721: invalid token ID");
-        deployment.loanToken.ownerOf(loanId);
+        __d.loanToken.ownerOf(loanId);
     }
 
     function test_shouldWithdrawFromPoolAndRepayToVault() external {
@@ -117,22 +117,22 @@ contract CompoundAdapterForkTest is UseCasesTest {
         // Update proposal
         proposal.creditAddress = USDC;
         proposal.creditAmount = 100e6; // 100 USDC
-        proposal.proposerSpecHash = deployment.simpleLoan.getLenderSpecHash(lenderSpec);
+        proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
         assertEq(IERC20(USDC).balanceOf(lender), 0);
         assertEq(IERC20(USDC).balanceOf(borrower), 0);
 
         // Make proposal
         vm.prank(lender);
-        deployment.simpleLoanSimpleProposal.makeProposal(proposal);
+        __d.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = __d.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
-        uint256 loanId = deployment.simpleLoan.createLOAN({
+        uint256 loanId = __d.simpleLoan.createLOAN({
             proposalSpec: PWNSimpleLoan.ProposalSpec({
-                proposalContract: address(deployment.simpleLoanSimpleProposal),
+                proposalContract: address(__d.simpleLoanSimpleProposal),
                 proposalData: proposalData,
                 proposalInclusionProof: new bytes32[](0),
                 signature: ""
@@ -156,17 +156,17 @@ contract CompoundAdapterForkTest is UseCasesTest {
         address newLender = makeAddr("new lender");
 
         vm.prank(lender);
-        deployment.loanToken.transferFrom(lender, newLender, loanId);
+        __d.loanToken.transferFrom(lender, newLender, loanId);
 
-        uint256 originalBalance = IERC20(USDC).balanceOf(address(deployment.simpleLoan));
+        uint256 originalBalance = IERC20(USDC).balanceOf(address(__d.simpleLoan));
 
         // Repay loan
         vm.prank(borrower);
-        deployment.simpleLoan.repayLOAN(loanId);
+        __d.simpleLoan.repayLOAN(loanId);
 
         // LOAN token owner is not original lender -> repay funds to the Vault
-        assertEq(IERC20(USDC).balanceOf(address(deployment.simpleLoan)), originalBalance + 100e6);
-        assertEq(deployment.loanToken.ownerOf(loanId), newLender);
+        assertEq(IERC20(USDC).balanceOf(address(__d.simpleLoan)), originalBalance + 100e6);
+        assertEq(__d.loanToken.ownerOf(loanId), newLender);
     }
 
     function testFuzz_shouldWithdrawAnyAmount(uint256 creditAmount) external {
@@ -182,21 +182,21 @@ contract CompoundAdapterForkTest is UseCasesTest {
         // Update proposal
         proposal.creditAddress = USDC;
         proposal.creditAmount = creditAmount;
-        proposal.proposerSpecHash = deployment.simpleLoan.getLenderSpecHash(lenderSpec);
+        proposal.proposerSpecHash = __d.simpleLoan.getLenderSpecHash(lenderSpec);
 
         assertEq(IERC20(USDC).balanceOf(borrower), 0);
 
         // Make proposal
         vm.prank(lender);
-        deployment.simpleLoanSimpleProposal.makeProposal(proposal);
+        __d.simpleLoanSimpleProposal.makeProposal(proposal);
 
-        bytes memory proposalData = deployment.simpleLoanSimpleProposal.encodeProposalData(proposal, proposalValues);
+        bytes memory proposalData = __d.simpleLoanSimpleProposal.encodeProposalData(proposal);
 
         // Create loan
         vm.prank(borrower);
-        deployment.simpleLoan.createLOAN({
+        __d.simpleLoan.createLOAN({
             proposalSpec: PWNSimpleLoan.ProposalSpec({
-                proposalContract: address(deployment.simpleLoanSimpleProposal),
+                proposalContract: address(__d.simpleLoanSimpleProposal),
                 proposalData: proposalData,
                 proposalInclusionProof: new bytes32[](0),
                 signature: ""
